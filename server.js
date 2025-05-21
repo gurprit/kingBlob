@@ -12,7 +12,7 @@ const INITIAL_SPEED     = 50;
 const SIZE_INCREMENT    = 10;
 const SPEED_DECREMENT   = 5;
 const MIN_SPEED         = 10;
-const RESPAWN_POSITION  = { x: 1500, y: 1500 };
+const RESPAWN_POSITION  = { x: 15, y: 15 };
 const RESPAWN_DELAY_MS  = 3000;
 
 app.use(express.static('public'));
