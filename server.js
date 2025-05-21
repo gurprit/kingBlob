@@ -7,16 +7,18 @@ const server = http.createServer(app);
 const wss    = new WebSocket.Server({ server });
 
 // game constants
-const INITIAL_SIZE     = 40;
-const INITIAL_SPEED    = 50;
-const SIZE_INCREMENT   = 10;
-const SPEED_DECREMENT  = 5;
-const MIN_SPEED        = 10;
-const RESPAWN_POSITION = { x: 1500, y: 1500 };
+const INITIAL_SIZE      = 40;
+const INITIAL_SPEED     = 50;
+const SIZE_INCREMENT    = 10;
+const SPEED_DECREMENT   = 5;
+const MIN_SPEED         = 10;
+const RESPAWN_POSITION  = { x: 1500, y: 1500 };
+const RESPAWN_DELAY_MS  = 3000;
 
 app.use(express.static('public'));
 
-const players = new Map(); // id → { ws, position, size, speed }
+const players = new Map(); 
+// id → { ws, position, size, speed, alive }
 
 wss.on('connection', (ws) => {
   const id = Date.now().toString();
@@ -24,12 +26,11 @@ wss.on('connection', (ws) => {
     ws,
     position: { ...RESPAWN_POSITION },
     size:     INITIAL_SIZE,
-    speed:    INITIAL_SPEED
+    speed:    INITIAL_SPEED,
+    alive:    true
   });
 
-  // tell the new client its id
   ws.send(JSON.stringify({ type: 'init', id }));
-  // broadcast so everyone sees the newcomer
   broadcastState();
 
   ws.on('message', (msg) => {
@@ -41,13 +42,11 @@ wss.on('connection', (ws) => {
     }
     if (data.type === 'move' && data.position) {
       const p = players.get(id);
-      // update the mover’s position
+      // only allow moves when alive
+      if (!p.alive) return;
+
       p.position = data.position;
-
-      // attacker-based collision
       doCollisions(id);
-
-      // send updated snapshot to all
       broadcastState();
     }
   });
@@ -60,25 +59,33 @@ wss.on('connection', (ws) => {
 
 function doCollisions(attackerId) {
   const attacker = players.get(attackerId);
-  if (!attacker) return;
+  if (!attacker || !attacker.alive) return;
 
   for (const [otherId, other] of players.entries()) {
-    if (otherId === attackerId) continue;
+    if (otherId === attackerId || !other.alive) continue;
 
-    const dx = attacker.position.x - other.position.x;
-    const dy = attacker.position.y - other.position.y;
+    const dx   = attacker.position.x - other.position.x;
+    const dy   = attacker.position.y - other.position.y;
     const dist = Math.hypot(dx, dy);
 
-    // if their circles overlap
     if (dist < (attacker.size + other.size) / 2) {
-      // attacker always wins
+      // attacker wins
       attacker.size  += SIZE_INCREMENT;
       attacker.speed  = Math.max(attacker.speed - SPEED_DECREMENT, MIN_SPEED);
 
-      // reset the victim
-      other.position = { ...RESPAWN_POSITION };
-      other.size     = INITIAL_SIZE;
-      other.speed    = INITIAL_SPEED;
+      // mark victim dead
+      other.alive = false;
+      // broadcast immediate death
+      broadcastState();
+
+      // schedule respawn
+      setTimeout(() => {
+        other.alive    = true;
+        other.position = { ...RESPAWN_POSITION };
+        other.size     = INITIAL_SIZE;
+        other.speed    = INITIAL_SPEED;
+        broadcastState();
+      }, RESPAWN_DELAY_MS);
     }
   }
 }
@@ -89,7 +96,8 @@ function broadcastState() {
     snapshot[pid] = {
       position: p.position,
       size:     p.size,
-      speed:    p.speed
+      speed:    p.speed,
+      alive:    p.alive
     };
   }
   const msg = JSON.stringify({ type: 'update', players: snapshot });
