@@ -13,10 +13,11 @@ html, body {
 }
 
 .blob {
-        width: 100px;
-    height: 100px;
   position: absolute;
   background: red;
   border-radius: 50%;
-  transition: left 0.05s linear, top 0.05s linear, width 0.05s linear, height 0.05s linear;
+  transition: left 0.05s linear,
+              top  0.05s linear,
+              width  0.05s linear,
+              height 0.05s linear;
 }

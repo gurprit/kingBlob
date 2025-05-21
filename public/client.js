@@ -1,20 +1,26 @@
 const socket   = new WebSocket(`wss://${location.host}`);
 const gameArea = document.getElementById('gameArea');
 
+// my blob
 const myBlob = document.createElement('div');
 myBlob.className = 'blob';
 gameArea.appendChild(myBlob);
 
-let playerId    = null;
-const blobs     = {};             // other players
-let myPosition  = { x: 15, y: 15 };
-let mySpeed     = 50;
+let playerId   = null;
+const blobs    = {};            // other players’ divs
+let myPosition = { x: 15, y: 15 };
+let mySpeed    = 50;
 
 function updateMyPosition() {
   if (!myPosition) return;
   myBlob.style.left = `${myPosition.x}px`;
   myBlob.style.top  = `${myPosition.y}px`;
 }
+
+// send our current pos whenever the socket opens
+socket.addEventListener('open', () => {
+  socket.send(JSON.stringify({ type: 'move', position: myPosition }));
+});
 
 socket.addEventListener('message', (event) => {
   const data = JSON.parse(event.data);
@@ -26,19 +32,21 @@ socket.addEventListener('message', (event) => {
   if (data.type !== 'update') return;
 
   Object.entries(data.players).forEach(([id, info]) => {
-    const serverPos   = info.position;   // explicit rename
+    const serverPos   = info.position;
     const serverSize  = info.size;
     const serverSpeed = info.speed;
 
     if (id === playerId) {
+      // update myself
       if (serverPos && typeof serverPos.x === 'number') {
-        myPosition = serverPos;          // only overwrite when valid
+        myPosition = serverPos;
         mySpeed    = serverSpeed;
         myBlob.style.width  = `${serverSize}px`;
         myBlob.style.height = `${serverSize}px`;
         updateMyPosition();
       }
     } else {
+      // update or create others
       if (!blobs[id]) {
         const b = document.createElement('div');
         b.className = 'blob';
@@ -57,6 +65,7 @@ socket.addEventListener('message', (event) => {
   });
 });
 
+// movement keys
 document.addEventListener('keydown', (e) => {
   if (!myPosition) return;
   switch (e.key) {
@@ -67,11 +76,8 @@ document.addEventListener('keydown', (e) => {
     default: return;
   }
   updateMyPosition();
-  socket.send(JSON.stringify({
-    type: 'move',
-    position: myPosition
-  }));
+  socket.send(JSON.stringify({ type: 'move', position: myPosition }));
 });
 
-// initial render
+// initial draw
 updateMyPosition();
