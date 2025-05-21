@@ -13,6 +13,8 @@ html, body {
 }
 
 .blob {
+        width: 100px;
+    height: 100px;
   position: absolute;
   background: red;
   border-radius: 50%;

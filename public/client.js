@@ -5,16 +5,15 @@ const myBlob = document.createElement('div');
 myBlob.className = 'blob';
 gameArea.appendChild(myBlob);
 
-let playerId = null;
-const blobs = {}; // other players’ divs
-
-// our state
-let position = { x: 15, y: 15 };
-let speed    = 50;
+let playerId    = null;
+const blobs     = {};             // other players
+let myPosition  = { x: 15, y: 15 };
+let mySpeed     = 50;
 
 function updateMyPosition() {
-  myBlob.style.left = `${position.x}px`;
-  myBlob.style.top  = `${position.y}px`;
+  if (!myPosition) return;
+  myBlob.style.left = `${myPosition.x}px`;
+  myBlob.style.top  = `${myPosition.y}px`;
 }
 
 socket.addEventListener('message', (event) => {
@@ -24,46 +23,54 @@ socket.addEventListener('message', (event) => {
     playerId = data.id;
     return;
   }
+  if (data.type !== 'update') return;
 
-  if (data.type === 'update') {
-    Object.entries(data.players).forEach(([id, info]) => {
-      const { position: pos, size, speed: srvSpeed } = info;
+  Object.entries(data.players).forEach(([id, info]) => {
+    const serverPos   = info.position;   // explicit rename
+    const serverSize  = info.size;
+    const serverSpeed = info.speed;
 
-      if (id === playerId) {
-        // update myself
-        speed = srvSpeed;
-        myBlob.style.width  = `${size}px`;
-        myBlob.style.height = `${size}px`;
-        position = pos;
+    if (id === playerId) {
+      if (serverPos && typeof serverPos.x === 'number') {
+        myPosition = serverPos;          // only overwrite when valid
+        mySpeed    = serverSpeed;
+        myBlob.style.width  = `${serverSize}px`;
+        myBlob.style.height = `${serverSize}px`;
         updateMyPosition();
-      } else {
-        // update or create other blobs
-        if (!blobs[id]) {
-          const b = document.createElement('div');
-          b.className = 'blob';
-          b.style.background = 'blue';
-          gameArea.appendChild(b);
-          blobs[id] = b;
-        }
-        blobs[id].style.width  = `${size}px`;
-        blobs[id].style.height = `${size}px`;
-        blobs[id].style.left   = `${pos.x}px`;
-        blobs[id].style.top    = `${pos.y}px`;
       }
-    });
-  }
+    } else {
+      if (!blobs[id]) {
+        const b = document.createElement('div');
+        b.className = 'blob';
+        b.style.background = 'blue';
+        gameArea.appendChild(b);
+        blobs[id] = b;
+      }
+      if (serverPos) {
+        const b = blobs[id];
+        b.style.width  = `${serverSize}px`;
+        b.style.height = `${serverSize}px`;
+        b.style.left   = `${serverPos.x}px`;
+        b.style.top    = `${serverPos.y}px`;
+      }
+    }
+  });
 });
 
 document.addEventListener('keydown', (e) => {
+  if (!myPosition) return;
   switch (e.key) {
-    case 'ArrowUp':    case 'w': position.y -= speed; break;
-    case 'ArrowDown':  case 's': position.y += speed; break;
-    case 'ArrowLeft':  case 'a': position.x -= speed; break;
-    case 'ArrowRight': case 'd': position.x += speed; break;
+    case 'ArrowUp':    case 'w': myPosition.y -= mySpeed; break;
+    case 'ArrowDown':  case 's': myPosition.y += mySpeed; break;
+    case 'ArrowLeft':  case 'a': myPosition.x -= mySpeed; break;
+    case 'ArrowRight': case 'd': myPosition.x += mySpeed; break;
     default: return;
   }
   updateMyPosition();
-  socket.send(JSON.stringify({ type: 'move', position }));
+  socket.send(JSON.stringify({
+    type: 'move',
+    position: myPosition
+  }));
 });
 
 // initial render
