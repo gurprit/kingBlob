@@ -29,22 +29,25 @@ wss.on('connection', (ws) => {
 
   // tell the new client its id
   ws.send(JSON.stringify({ type: 'init', id }));
-
-  // immediately broadcast full state (so new client sees everyone, and everyone sees the newcomer)
+  // broadcast so everyone sees the newcomer
   broadcastState();
 
   ws.on('message', (msg) => {
     let data;
     try {
       data = JSON.parse(msg);
-    } catch (e) {
+    } catch {
       return;
     }
     if (data.type === 'move' && data.position) {
       const p = players.get(id);
+      // update the mover’s position
       p.position = data.position;
-      // collision logic (optional—remove if you just want movement)
-      doCollisions();
+
+      // attacker-based collision
+      doCollisions(id);
+
+      // send updated snapshot to all
       broadcastState();
     }
   });
@@ -55,24 +58,27 @@ wss.on('connection', (ws) => {
   });
 });
 
-function doCollisions() {
-  const list = Array.from(players.values());
-  for (let i = 0; i < list.length; i++) {
-    for (let j = i + 1; j < list.length; j++) {
-      const p1 = list[i], p2 = list[j];
-      const dx = p1.position.x - p2.position.x;
-      const dy = p1.position.y - p2.position.y;
-      const dist = Math.hypot(dx, dy);
-      if (dist < (p1.size + p2.size) / 2) {
-        // bigger eats smaller
-        let winner = p1.size > p2.size ? p1 : p2;
-        let loser  = p1.size > p2.size ? p2 : p1;
-        winner.size  += SIZE_INCREMENT;
-        winner.speed  = Math.max(winner.speed - SPEED_DECREMENT, MIN_SPEED);
-        loser.position = { ...RESPAWN_POSITION };
-        loser.size     = INITIAL_SIZE;
-        loser.speed    = INITIAL_SPEED;
-      }
+function doCollisions(attackerId) {
+  const attacker = players.get(attackerId);
+  if (!attacker) return;
+
+  for (const [otherId, other] of players.entries()) {
+    if (otherId === attackerId) continue;
+
+    const dx = attacker.position.x - other.position.x;
+    const dy = attacker.position.y - other.position.y;
+    const dist = Math.hypot(dx, dy);
+
+    // if their circles overlap
+    if (dist < (attacker.size + other.size) / 2) {
+      // attacker always wins
+      attacker.size  += SIZE_INCREMENT;
+      attacker.speed  = Math.max(attacker.speed - SPEED_DECREMENT, MIN_SPEED);
+
+      // reset the victim
+      other.position = { ...RESPAWN_POSITION };
+      other.size     = INITIAL_SIZE;
+      other.speed    = INITIAL_SPEED;
     }
   }
 }
