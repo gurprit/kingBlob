@@ -51,8 +51,8 @@ socket.addEventListener('message', (event) => {
 
       myPosition = srvPos;
       mySpeed    = srvSpeed;
-      myBlob.style.width  = `${srvSize}px`;
-      myBlob.style.height = `${srvSize}px`;
+      myBlob.style.width  = `${srvSize*2}px`;
+      myBlob.style.height = `${srvSize*2}px`;
       updateMyPosition();
     } else {
       // others
