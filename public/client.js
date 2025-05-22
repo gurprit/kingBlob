@@ -12,19 +12,19 @@ let myPosition = { x: 15, y: 15 };
 let mySpeed    = 50;
 let alive      = true;
 
-// movement helper
+// move & render helper
 function updateMyPosition() {
   if (!myPosition) return;
   myBlob.style.left = `${myPosition.x}px`;
   myBlob.style.top  = `${myPosition.y}px`;
 }
 
-// send initial pos on open
+// on socket open, announce ourselves
 socket.addEventListener('open', () => {
   socket.send(JSON.stringify({ type: 'move', position: myPosition }));
 });
 
-// handle server messages
+// handle server updates
 socket.addEventListener('message', (event) => {
   const data = JSON.parse(event.data);
   if (data.type === 'init') {
@@ -34,12 +34,19 @@ socket.addEventListener('message', (event) => {
   if (data.type !== 'update') return;
 
   Object.entries(data.players).forEach(([id, info]) => {
-    const { position: srvPos, size: srvSize, speed: srvSpeed, alive: srvAlive } = info;
+    const {
+      position: srvPos,
+      size:     srvSize,
+      speed:    srvSpeed,
+      alive:    srvAlive,
+      colour:   srvColour
+    } = info;
 
     if (id === playerId) {
-      // self
+      // me
       alive = srvAlive;
-      myBlob.style.display = alive ? 'block' : 'none';
+      myBlob.style.display    = alive ? 'block' : 'none';
+      myBlob.style.background = srvColour;
       if (!alive) return;
 
       myPosition = srvPos;
@@ -52,12 +59,12 @@ socket.addEventListener('message', (event) => {
       if (!blobs[id]) {
         const b = document.createElement('div');
         b.className = 'blob';
-        b.style.background = 'blue';
         gameArea.appendChild(b);
         blobs[id] = b;
       }
       const b = blobs[id];
-      b.style.display = srvAlive ? 'block' : 'none';
+      b.style.display    = srvAlive ? 'block' : 'none';
+      b.style.background = srvColour;
       if (!srvAlive) return;
 
       b.style.width  = `${srvSize}px`;
@@ -82,7 +89,7 @@ document.addEventListener('keydown', (e) => {
   socket.send(JSON.stringify({ type: 'move', position: myPosition }));
 });
 
-// simple touch-and-hold D-pad
+// touch D-pad handlers (unchanged)
 const directions = {
   up:    { dx:  0, dy: -1 },
   down:  { dx:  0, dy:  1 },
@@ -94,18 +101,15 @@ const repeatTimers = {};
 Object.keys(directions).forEach(dir => {
   const btn = document.getElementById(dir);
   btn.addEventListener('touchstart', e => {
-    e.preventDefault();
-    moveDir(dir);
+    e.preventDefault(); moveDir(dir);
     repeatTimers[dir] = setInterval(() => moveDir(dir), 100);
   });
-  btn.addEventListener('touchend', e => {
-    e.preventDefault();
-    clearInterval(repeatTimers[dir]);
-  });
-  btn.addEventListener('touchcancel', e => {
-    e.preventDefault();
-    clearInterval(repeatTimers[dir]);
-  });
+  ['touchend','touchcancel'].forEach(evt =>
+    btn.addEventListener(evt, e => {
+      e.preventDefault();
+      clearInterval(repeatTimers[dir]);
+    })
+  );
 });
 
 function moveDir(dir) {
