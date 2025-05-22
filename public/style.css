@@ -16,8 +16,39 @@ html, body {
   position: absolute;
   background: red;
   border-radius: 50%;
-  transition: left 0.05s linear,
-              top  0.05s linear,
-              width  0.05s linear,
-              height 0.05s linear;
+  transition:
+    left   0.05s linear,
+    top    0.05s linear,
+    width  0.05s linear,
+    height 0.05s linear;
 }
+
+/* D-pad container */
+#dpad {
+  position: fixed;
+  bottom: 20px;
+  left: 20px;
+  width: 120px;
+  height: 120px;
+  pointer-events: none; /* let only buttons catch touches */
+}
+
+/* D-pad buttons */
+#dpad button {
+  position: absolute;
+  width: 40px;
+  height: 40px;
+  background: rgba(0, 0, 0, 0.3);
+  color: white;
+  border: none;
+  border-radius: 50%;
+  font-size: 20px;
+  pointer-events: auto;
+  user-select: none;
+}
+
+/* Layout the arrows */
+#up    { top:    0;    left:  40px; }
+#down  { bottom: 0;    left:  40px; }
+#left  { top:    40px; left:  0;    }
+#right { top:    40px; right: 0;    }

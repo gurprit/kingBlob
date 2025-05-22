@@ -1,26 +1,30 @@
 const socket   = new WebSocket(`wss://${location.host}`);
 const gameArea = document.getElementById('gameArea');
 
+// my blob
 const myBlob = document.createElement('div');
 myBlob.className = 'blob';
 gameArea.appendChild(myBlob);
 
 let playerId   = null;
-const blobs    = {};            
+const blobs    = {};             // other players’ divs
 let myPosition = { x: 15, y: 15 };
 let mySpeed    = 50;
 let alive      = true;
 
+// movement helper
 function updateMyPosition() {
   if (!myPosition) return;
   myBlob.style.left = `${myPosition.x}px`;
   myBlob.style.top  = `${myPosition.y}px`;
 }
 
+// send initial pos on open
 socket.addEventListener('open', () => {
   socket.send(JSON.stringify({ type: 'move', position: myPosition }));
 });
 
+// handle server messages
 socket.addEventListener('message', (event) => {
   const data = JSON.parse(event.data);
   if (data.type === 'init') {
@@ -37,7 +41,7 @@ socket.addEventListener('message', (event) => {
       alive = srvAlive;
       myBlob.style.display = alive ? 'block' : 'none';
       if (!alive) return;
-      
+
       myPosition = srvPos;
       mySpeed    = srvSpeed;
       myBlob.style.width  = `${srvSize}px`;
@@ -64,9 +68,9 @@ socket.addEventListener('message', (event) => {
   });
 });
 
+// keyboard controls
 document.addEventListener('keydown', (e) => {
-  if (!alive) return;   // can't move when dead
-
+  if (!alive) return;
   switch (e.key) {
     case 'ArrowUp':    case 'w': myPosition.y -= mySpeed; break;
     case 'ArrowDown':  case 's': myPosition.y += mySpeed; break;
@@ -77,6 +81,41 @@ document.addEventListener('keydown', (e) => {
   updateMyPosition();
   socket.send(JSON.stringify({ type: 'move', position: myPosition }));
 });
+
+// simple touch-and-hold D-pad
+const directions = {
+  up:    { dx:  0, dy: -1 },
+  down:  { dx:  0, dy:  1 },
+  left:  { dx: -1, dy:  0 },
+  right: { dx:  1, dy:  0 },
+};
+const repeatTimers = {};
+
+Object.keys(directions).forEach(dir => {
+  const btn = document.getElementById(dir);
+  btn.addEventListener('touchstart', e => {
+    e.preventDefault();
+    moveDir(dir);
+    repeatTimers[dir] = setInterval(() => moveDir(dir), 100);
+  });
+  btn.addEventListener('touchend', e => {
+    e.preventDefault();
+    clearInterval(repeatTimers[dir]);
+  });
+  btn.addEventListener('touchcancel', e => {
+    e.preventDefault();
+    clearInterval(repeatTimers[dir]);
+  });
+});
+
+function moveDir(dir) {
+  if (!alive) return;
+  const { dx, dy } = directions[dir];
+  myPosition.x += dx * mySpeed;
+  myPosition.y += dy * mySpeed;
+  updateMyPosition();
+  socket.send(JSON.stringify({ type: 'move', position: myPosition }));
+}
 
 // initial draw
 updateMyPosition();
