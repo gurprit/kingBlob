@@ -3,7 +3,6 @@ html, body {
   overflow: hidden;
   width: 100%;
   height: 100%;
-  filter: blur(10px) contrast(18);
 }
 
 #gameArea {
@@ -11,7 +10,7 @@ html, body {
   width: 100%;
   height: 100%;
   background: #eef2f7;
-
+  filter: blur(3px) contrast(15);
 }
 
 .blob {
