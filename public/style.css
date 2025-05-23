@@ -1,15 +1,18 @@
 html, body {
   margin: 0;
-  overflow: hidden;
-  width: 100%;
   height: 100%;
+  overflow: hidden;
+  display: flex;
+  justify-content: center;
+  align-items: center;
 }
 
 #gameArea {
-  position: relative;
-  width: 100%;
+  width: 375px;
   height: 100%;
+  position: relative;
   background: #eef2f7;
+  overflow: hidden;
 }
 
 .blob {
@@ -21,10 +24,9 @@ html, body {
     top    0.1s linear,
     width  0.1s linear,
     height 0.1s linear;
-  overflow: visible; /* so the pointer can extend outside */
+  overflow: visible;
 }
 
-/* rotating pointer */
 .pointer {
   position: absolute;
   top: 50%;
@@ -34,7 +36,6 @@ html, body {
   background: #333;
 }
 
-/* bullet */
 .bullet {
   position: absolute;
   width: 10px;
@@ -44,7 +45,6 @@ html, body {
   pointer-events: none;
 }
 
-/* Controls container */
 #controls {
   position: fixed;
   bottom: 20px;
@@ -55,7 +55,6 @@ html, body {
   z-index: 1000;
 }
 
-/* Big round buttons */
 #controls button {
   width: 64px;
   height: 64px;

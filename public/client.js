@@ -1,19 +1,17 @@
-// public/client.js
-
-// 1. Create the socket
+// 1. Socket setup
 const socket   = new WebSocket(`wss://${location.host}`);
 const gameArea = document.getElementById('gameArea');
 
-// 2. Send our window size on open for proper spawning
+// 2. Tell server our container size
 socket.addEventListener('open', () => {
   socket.send(JSON.stringify({
-    type:  'set_dimensions',
-    width: window.innerWidth,
-    height: window.innerHeight
+    type:   'set_dimensions',
+    width:  gameArea.clientWidth,
+    height: gameArea.clientHeight
   }));
 });
 
-// --- Blob + Pointer setup ---
+// --- Blob & Pointer ---
 const myBlob = document.createElement('div');
 myBlob.className = 'blob';
 gameArea.appendChild(myBlob);
@@ -30,14 +28,14 @@ let mySize             = 40;
 let alive              = true;
 let skipNextSelfUpdate = true;
 
-// Pointer rotation
+// Pointer animation
 let pointerAngle    = 0;
-const POINTER_SPEED = 120; // deg/sec
-let lastPointerTime = performance.now();
+const POINTER_SPEED = 120;
+let lastP           = performance.now();
 
 function animatePointer(now = performance.now()) {
-  const dt = (now - lastPointerTime) / 1000;
-  lastPointerTime = now;
+  const dt = (now - lastP) / 1000;
+  lastP = now;
   pointerAngle = (pointerAngle + POINTER_SPEED * dt) % 360;
   pointer.style.transform = `rotate(${pointerAngle}deg)`;
   requestAnimationFrame(animatePointer);
@@ -46,10 +44,8 @@ requestAnimationFrame(animatePointer);
 
 // Render helpers
 function updatePointer() {
-  const length = mySize / 2 + 12;
-  pointer.style.width = `${length}px`;
+  pointer.style.width = `${mySize/2 + 12}px`;
 }
-
 function renderMe() {
   myBlob.style.width  = `${mySize}px`;
   myBlob.style.height = `${mySize}px`;
@@ -59,10 +55,10 @@ function renderMe() {
 }
 renderMe();
 
-// Keep DOM elements for bullets
-const bullets = {}; // id → element
+// Track bullets by ID
+const bullets = {};
 
-// --- Socket Handlers ---
+// Handle server messages
 socket.addEventListener('message', ev => {
   const msg = JSON.parse(ev.data);
 
@@ -70,91 +66,87 @@ socket.addEventListener('message', ev => {
     playerId = msg.id;
     return;
   }
+  if (msg.type !== 'update') return;
 
-  if (msg.type === 'update') {
-    // 1) Update all players
-    Object.entries(msg.players).forEach(([id, info]) => {
-      const isMe = id === playerId;
-      let el = isMe
-        ? myBlob
-        : document.querySelector(`.blob[data-id="${id}"]`);
+  // Players
+  Object.entries(msg.players).forEach(([id, info]) => {
+    const isMe = id === playerId;
+    let el = isMe
+      ? myBlob
+      : document.querySelector(`.blob[data-id="${id}"]`);
 
-      if (!el && !isMe) {
-        el = document.createElement('div');
-        el.className = 'blob';
-        el.dataset.id = id;
-        gameArea.appendChild(el);
+    if (!el && !isMe) {
+      el = document.createElement('div');
+      el.className = 'blob';
+      el.dataset.id = id;
+      gameArea.appendChild(el);
+    }
+    if (!el) return;
+
+    el.style.background = info.colour;
+    el.style.display    = info.alive ? 'block' : 'none';
+    if (!info.alive) return;
+
+    el.style.width  = `${info.size}px`;
+    el.style.height = `${info.size}px`;
+    el.style.left   = `${info.position.x - info.size/2}px`;
+    el.style.top    = `${info.position.y - info.size/2}px`;
+
+    if (isMe) {
+      if (skipNextSelfUpdate) skipNextSelfUpdate = false;
+      else {
+        myPosition = info.position;
+        mySpeed    = info.speed;
+        mySize     = info.size;
+        renderMe();
       }
+    }
+  });
 
-      if (!el) return;
-
-      el.style.background = info.colour;
-      el.style.display    = info.alive ? 'block' : 'none';
-      if (!info.alive) return;
-
-      el.style.width  = `${info.size}px`;
-      el.style.height = `${info.size}px`;
-      el.style.left   = `${info.position.x - info.size/2}px`;
-      el.style.top    = `${info.position.y - info.size/2}px`;
-
-      if (isMe) {
-        if (skipNextSelfUpdate) {
-          skipNextSelfUpdate = false;
-        } else {
-          myPosition = info.position;
-          mySpeed    = info.speed;
-          mySize     = info.size;
-          renderMe();
-        }
-      }
-    });
-
-    // 2) Update bullets
-    const seen = new Set();
-    msg.bullets.forEach(b => {
-      seen.add(b.id);
-      let el = bullets[b.id];
-      if (!el) {
-        el = document.createElement('div');
-        el.className = 'bullet';
-        gameArea.appendChild(el);
-        bullets[b.id] = el;
-      }
-      el.style.left = `${b.x - 5}px`;
-      el.style.top  = `${b.y - 5}px`;
-    });
-    // remove bullets that disappeared server-side
-    Object.keys(bullets).forEach(id => {
-      if (!seen.has(Number(id))) {
-        bullets[id].remove();
-        delete bullets[id];
-      }
-    });
-  }
+  // Bullets
+  const seen = new Set();
+  msg.bullets.forEach(b => {
+    seen.add(b.id);
+    let el = bullets[b.id];
+    if (!el) {
+      el = document.createElement('div');
+      el.className = 'bullet';
+      gameArea.appendChild(el);
+      bullets[b.id] = el;
+    }
+    el.style.left = `${b.x - 5}px`;
+    el.style.top  = `${b.y - 5}px`;
+  });
+  // remove old bullets
+  Object.keys(bullets).forEach(id => {
+    if (!seen.has(Number(id))) {
+      bullets[id].remove();
+      delete bullets[id];
+    }
+  });
 });
 
-// --- Controls & Actions ---
+// Controls
 const moveBtn = document.getElementById('moveBtn');
 const fireBtn = document.getElementById('fireBtn');
 
-function getDirectionVector() {
+function getDir() {
   const rad = pointerAngle * Math.PI/180;
   return { x: Math.cos(rad), y: Math.sin(rad) };
 }
 
 function doMove() {
   if (!alive) return;
-  const dir = getDirectionVector();
-  myPosition.x += dir.x * mySpeed;
-  myPosition.y += dir.y * mySpeed;
+  const d = getDir();
+  myPosition.x += d.x * mySpeed;
+  myPosition.y += d.y * mySpeed;
   renderMe();
   socket.send(JSON.stringify({ type: 'move', position: myPosition }));
 }
 
 function doFire() {
   if (!alive) return;
-  const dir = getDirectionVector();
-  socket.send(JSON.stringify({ type: 'fire', direction: dir }));
+  socket.send(JSON.stringify({ type: 'fire', direction: getDir() }));
 }
 
 ['click','touchstart'].forEach(evt => {
@@ -162,7 +154,7 @@ function doFire() {
   fireBtn.addEventListener(evt, e => { e.preventDefault(); doFire(); });
 });
 
-// Desktop fallback
+// desktop fallback
 document.addEventListener('keydown', e => {
   if (e.key === 'm') doMove();
   if (e.key === 'f') doFire();
