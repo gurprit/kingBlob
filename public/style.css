@@ -58,7 +58,7 @@ html, body {
 
 #controls button {
   width: 50%; /* Changed from 64px */
-  height: 40vw; /* Changed from 64px, to make it squarish */
+  height: 20vw; /* Changed from 64px, to make it squarish */
   border: none;
   border-radius: 0; /* Changed from 50% */
   background: rgba(0,0,0,0.3);
