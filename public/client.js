@@ -16,6 +16,10 @@ const myBlob = document.createElement('div');
 myBlob.className = 'blob';
 gameArea.appendChild(myBlob);
 
+myBlob.scoreElement = document.createElement('div'); // <<< ADD THIS
+myBlob.scoreElement.className = 'score-display';    // <<< ADD THIS
+myBlob.appendChild(myBlob.scoreElement);            // <<< ADD THIS
+
 const pointer = document.createElement('div');
 pointer.className = 'pointer';
 myBlob.appendChild(pointer);
@@ -91,6 +95,13 @@ socket.addEventListener('message', ev => {
     el.style.height = `${info.size}px`;
     el.style.left   = `${info.position.x - info.size/2}px`;
     el.style.top    = `${info.position.y - info.size/2}px`;
+
+    if (!el.scoreElement) {                                 // <<< ADD THIS
+      el.scoreElement = document.createElement('div');      // <<< ADD THIS
+      el.scoreElement.className = 'score-display';          // <<< ADD THIS
+      el.appendChild(el.scoreElement);                      // <<< ADD THIS
+    }                                                       // <<< ADD THIS
+    el.scoreElement.textContent = info.score;               // <<< ADD THIS
 
     if (isMe) {
       if (skipNextSelfUpdate) skipNextSelfUpdate = false;

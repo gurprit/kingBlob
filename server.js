@@ -75,7 +75,8 @@ function broadcastState() {
       size:     p.size,
       speed:    p.speed,
       alive:    p.alive,
-      colour:   p.colour
+      colour:   p.colour,
+      score:    p.score // <<< ADD THIS
     };
   }
 
@@ -110,6 +111,7 @@ function handleMelee(attackerId) {
     const dist = Math.hypot(dx, dy);
 
     if (dist < (att.size + other.size) / 2) {
+      att.score += 500; // <<< ADD THIS
       att.size  += SIZE_INCREMENT;
       att.speed  = Math.max(att.speed - SPEED_DECREMENT, MIN_SPEED);
       killAndRespawn(oid);
@@ -163,7 +165,8 @@ wss.on('connection', ws => {
         size:     INITIAL_SIZE,
         speed:    INITIAL_SPEED,
         alive:    true,
-        colour
+        colour,
+        score:    0 // <<< ADD THIS
       });
 
       ws.send(JSON.stringify({ type: 'init', id: pid }));
@@ -253,6 +256,10 @@ setInterval(() => {
       const dist = Math.hypot(dx, dy);
 
       if (dist < p.size / 2) {
+        const shooter = players.get(b.shooterId);
+        if (shooter && b.shooterId !== pid) { // Ensure shooter exists and is not the victim
+            shooter.score += 1; // <<< ADD THIS
+        }
         killAndRespawn(pid);
         bullets.splice(i, 1);
         break;
