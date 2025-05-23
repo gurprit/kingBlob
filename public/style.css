@@ -47,24 +47,28 @@ html, body {
 
 #controls {
   position: fixed;
-  bottom: 20px;
-  right: 20px;
+  bottom: 0; /* Changed from 20px */
+  left: 0; /* Changed from right: 20px */
+  width: 100%; /* Added */
   display: flex;
-  flex-direction: column;
-  gap: 12px;
+  flex-direction: row; /* Changed from column */
+  gap: 0; /* Changed from 12px */
   z-index: 1000;
 }
 
 #controls button {
-  width: 64px;
-  height: 64px;
+  width: 50%; /* Changed from 64px */
+  height: 40vw; /* Changed from 64px, to make it squarish */
   border: none;
-  border-radius: 50%;
+  border-radius: 0; /* Changed from 50% */
   background: rgba(0,0,0,0.3);
   color: white;
-  font-size: 16px;
+  font-size: 24px; /* Increased from 16px */
   user-select: none;
   touch-action: none;
+  display: flex; /* Added */
+  align-items: center; /* Added */
+  justify-content: center; /* Added */
 }
 #controls button:active {
   background: rgba(0,0,0,0.6);
