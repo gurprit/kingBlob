@@ -23,8 +23,11 @@ const MIN_SPEED         = 10;
 const RESPAWN_DELAY_MS  = 3000;
 
 // ——————— BULLET CONSTANTS ———————
-const BULLET_SPEED       = 500;   // px/sec
-const BULLET_LIFETIME_MS = 4000;  // ms before disappearing
+const BULLET_SPEED        = 500;   // px/sec
+const BULLET_LIFETIME_MS  = 4000;  // ms before disappearing
+const BULLET_TICK_MS      = 50;    // how often we update bullets
+const SELF_HIT_DELAY_MS   = BULLET_TICK_MS; // ms before your own bullet can hurt you
+// (so it has a chance to get outside your blob)
 
 // ——————— COLOURS ———————
 const COLORS = [
@@ -47,19 +50,23 @@ function clampPosition(pos, size) {
   };
 }
 
-// Random spawn **around center** within padding
+// Random spawn around the center
 function randomSpawn() {
   const cx = worldWidth  / 2;
   const cy = worldHeight / 2;
   const rx = worldWidth  / 4;
   const ry = worldHeight / 4;
+
   let x = cx + (Math.random()*2 -1)*rx;
   let y = cy + (Math.random()*2 -1)*ry;
+
   x = Math.min(Math.max(x, SPAWN_PADDING), worldWidth  - SPAWN_PADDING);
   y = Math.min(Math.max(y, SPAWN_PADDING), worldHeight - SPAWN_PADDING);
+
   return { x, y };
 }
 
+// Broadcast the full game state (players + bullets)
 function broadcastState() {
   const playerSnap = {};
   for (const [pid, p] of players.entries()) {
@@ -71,7 +78,12 @@ function broadcastState() {
       colour:   p.colour
     };
   }
-  const bulletSnap = bullets.map(b => ({ id: b.id, x: b.x, y: b.y }));
+
+  const bulletSnap = bullets.map(b => ({
+    id: b.id,
+    x:  b.x,
+    y:  b.y
+  }));
 
   const msg = JSON.stringify({
     type:    'update',
@@ -80,19 +92,24 @@ function broadcastState() {
   });
 
   for (const { ws } of players.values()) {
-    if (ws.readyState === WebSocket.OPEN) ws.send(msg);
+    if (ws.readyState === WebSocket.OPEN) {
+      ws.send(msg);
+    }
   }
 }
 
+// Handle melee collisions (mover wins)
 function handleMelee(attackerId) {
   const att = players.get(attackerId);
   if (!att || !att.alive) return;
+
   for (const [oid, other] of players.entries()) {
     if (oid === attackerId || !other.alive) continue;
-    const dx = att.position.x - other.position.x;
-    const dy = att.position.y - other.position.y;
+    const dx   = att.position.x - other.position.x;
+    const dy   = att.position.y - other.position.y;
     const dist = Math.hypot(dx, dy);
-    if (dist < (att.size + other.size)/2) {
+
+    if (dist < (att.size + other.size) / 2) {
       att.size  += SIZE_INCREMENT;
       att.speed  = Math.max(att.speed - SPEED_DECREMENT, MIN_SPEED);
       killAndRespawn(oid);
@@ -100,11 +117,13 @@ function handleMelee(attackerId) {
   }
 }
 
+// Kill a player, then respawn after a delay at a random central point
 function killAndRespawn(pid) {
   const p = players.get(pid);
   if (!p || !p.alive) return;
   p.alive = false;
-  broadcastState();
+  broadcastState(); // vanish immediately
+
   setTimeout(() => {
     p.alive    = true;
     p.position = randomSpawn();
@@ -114,7 +133,7 @@ function killAndRespawn(pid) {
   }, RESPAWN_DELAY_MS);
 }
 
-// ——————— NEW CONNECTION ———————
+// ——————— HANDLE NEW CONNECTION ———————
 wss.on('connection', ws => {
   const id = Date.now().toString();
   pendingClients.set(ws, id);
@@ -124,7 +143,7 @@ wss.on('connection', ws => {
     try { data = JSON.parse(msg); }
     catch { return; }
 
-    // First handshake: get container size from client
+    // 1️⃣ First handshake: client sends container size
     if (data.type === 'set_dimensions' && pendingClients.has(ws)) {
       const pid = pendingClients.get(ws);
       pendingClients.delete(ws);
@@ -132,11 +151,12 @@ wss.on('connection', ws => {
       if (worldWidth === null) {
         worldWidth  = data.width;
         worldHeight = data.height;
-        console.log(`World: ${worldWidth}×${worldHeight}`);
+        console.log(`World set to ${worldWidth}×${worldHeight}`);
       }
 
       const spawn  = randomSpawn();
-      const colour = COLORS[Math.floor(Math.random()*COLORS.length)];
+      const colour = COLORS[Math.floor(Math.random() * COLORS.length)];
+
       players.set(pid, {
         ws,
         position: spawn,
@@ -151,11 +171,13 @@ wss.on('connection', ws => {
       return;
     }
 
-    // After handshake: movement or fire
-    const pid = pendingClients.get(ws) || [...players].find(([k,v])=>v.ws===ws)?.[0];
+    // 2️⃣ After handshake: move or fire
+    const pid = pendingClients.get(ws)
+              || [...players].find(([k,v]) => v.ws === ws)?.[0];
     if (!pid) return;
+
     const me = players.get(pid);
-    if (!me.alive) return;
+    if (!me || !me.alive) return;
 
     if (data.type === 'move' && data.position) {
       me.position = clampPosition(data.position, me.size);
@@ -171,8 +193,8 @@ wss.on('connection', ws => {
           shooterId: pid,
           x:         me.position.x,
           y:         me.position.y,
-          dx:        dx/mag,
-          dy:        dy/mag,
+          dx:        dx / mag,
+          dy:        dy / mag,
           createdAt: Date.now()
         });
       }
@@ -188,47 +210,61 @@ wss.on('connection', ws => {
   });
 });
 
-// ——————— BULLET TICK ———————
-let last = Date.now();
+// ——————— BULLET TICK (every BULLET_TICK_MS) ———————
+let lastTick = Date.now();
 setInterval(() => {
-  if (worldWidth === null) return;
-  const now = Date.now();
-  const dt  = (now - last)/1000;
-  last = now;
+  if (worldWidth === null) return; // wait for handshake
 
-  // Move & bounce
+  const now = Date.now();
+  const dt  = (now - lastTick) / 1000;
+  lastTick  = now;
+
+  // 1) Move & bounce bullets
   bullets.forEach(b => {
     b.x += b.dx * BULLET_SPEED * dt;
     b.y += b.dy * BULLET_SPEED * dt;
-    // bounce X
-    if (b.x <= 0)  { b.x = 0;  b.dx *= -1; }
-    if (b.x >= worldWidth) { b.x = worldWidth; b.dx *= -1; }
-    // bounce Y
-    if (b.y <= 0)  { b.y = 0;  b.dy *= -1; }
-    if (b.y >= worldHeight){ b.y = worldHeight; b.dy *= -1; }
+
+    // bounce off left/right
+    if (b.x <= 0)        { b.x = 0;        b.dx *= -1; }
+    else if (b.x >= worldWidth)  { b.x = worldWidth;  b.dx *= -1; }
+    // bounce off top/bottom
+    if (b.y <= 0)        { b.y = 0;        b.dy *= -1; }
+    else if (b.y >= worldHeight) { b.y = worldHeight; b.dy *= -1; }
   });
 
-  // Expire by time & check hits
-  for (let i = bullets.length-1; i >= 0; i--) {
-    const b = bullets[i];
-    if (now - b.createdAt > BULLET_LIFETIME_MS) {
-      bullets.splice(i,1);
+  // 2) Expiry & collision (including self after a short delay)
+  for (let i = bullets.length - 1; i >= 0; i--) {
+    const b   = bullets[i];
+    const age = now - b.createdAt;
+
+    // expire if too old
+    if (age > BULLET_LIFETIME_MS) {
+      bullets.splice(i, 1);
       continue;
     }
+
+    // check hit on every alive player (including the shooter, once age > SELF_HIT_DELAY_MS)
     for (const [pid, p] of players.entries()) {
-      if (pid === b.shooterId || !p.alive) continue;
-      const dx = p.position.x - b.x;
-      const dy = p.position.y - b.y;
-      if (Math.hypot(dx, dy) < p.size/2) {
+      if (!p.alive) continue;
+      if (pid === b.shooterId && age < SELF_HIT_DELAY_MS) continue;
+
+      const dx   = p.position.x - b.x;
+      const dy   = p.position.y - b.y;
+      const dist = Math.hypot(dx, dy);
+
+      if (dist < p.size / 2) {
         killAndRespawn(pid);
-        bullets.splice(i,1);
+        bullets.splice(i, 1);
         break;
       }
     }
   }
 
+  // 3) Broadcast updated state
   broadcastState();
-}, 50);
+}, BULLET_TICK_MS);
 
-const PORT = process.env.PORT||3000;
-server.listen(PORT,()=>console.log(`Listening on ${PORT}`));
+const PORT = process.env.PORT || 3000;
+server.listen(PORT, () => {
+  console.log(`Server listening on http://localhost:${PORT}`);
+});
