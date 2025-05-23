@@ -124,6 +124,7 @@ function killAndRespawn(pid) {
   const p = players.get(pid);
   if (!p || !p.alive) return;
   p.alive = false;
+  p.score = 0; // <<< ADD THIS LINE
   broadcastState(); // vanish immediately
 
   setTimeout(() => {
