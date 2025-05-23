@@ -10,7 +10,6 @@ html, body {
   width: 100%;
   height: 100%;
   background: #eef2f7;
-  filter: blur(5px) contrast(30);
 }
 
 .blob {
@@ -18,38 +17,56 @@ html, body {
   background: red;
   border-radius: 50%;
   transition:
-    left   0.05s linear,
-    top    0.05s linear,
-    width  0.05s linear,
-    height 0.05s linear;
+    left   0.1s linear,
+    top    0.1s linear,
+    width  0.1s linear,
+    height 0.1s linear;
+  overflow: visible; /* so the pointer can extend outside */
 }
 
-/* D-pad container */
-#dpad {
+/* rotating pointer */
+.pointer {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  transform-origin: 0 0;
+  height: 3px;
+  background: #333;
+}
+
+/* bullet */
+.bullet {
+  position: absolute;
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  background: black;
+  pointer-events: none;
+}
+
+/* Controls container */
+#controls {
   position: fixed;
   bottom: 20px;
-  left: 20px;
-  width: 120px;
-  height: 120px;
-  pointer-events: none; /* let only buttons catch touches */
+  right: 20px;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  z-index: 1000;
 }
 
-/* D-pad buttons */
-#dpad button {
-  position: absolute;
-  width: 40px;
-  height: 40px;
-  background: rgba(0, 0, 0, 0.3);
-  color: white;
+/* Big round buttons */
+#controls button {
+  width: 64px;
+  height: 64px;
   border: none;
   border-radius: 50%;
-  font-size: 20px;
-  pointer-events: auto;
+  background: rgba(0,0,0,0.3);
+  color: white;
+  font-size: 16px;
   user-select: none;
+  touch-action: none;
 }
-
-/* Layout the arrows */
-#up    { top:    0;    left:  40px; }
-#down  { bottom: 0;    left:  40px; }
-#left  { top:    40px; left:  0;    }
-#right { top:    40px; right: 0;    }
+#controls button:active {
+  background: rgba(0,0,0,0.6);
+}
