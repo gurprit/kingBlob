@@ -9,10 +9,10 @@ const wss    = new WebSocket.Server({ server });
 app.use(express.static('public'));
 
 // ——————— WORLD DIMENSIONS ———————
-// Will be set once, by the first client that connects:
+// Will be set by the first client’s container size
 let worldWidth  = null;
 let worldHeight = null;
-const SPAWN_PADDING = 50;  // don’t spawn right on the edge
+const SPAWN_PADDING = 50;
 
 // ——————— GAME CONSTANTS ———————
 const INITIAL_SIZE      = 40;
@@ -24,7 +24,7 @@ const RESPAWN_DELAY_MS  = 3000;
 
 // ——————— BULLET CONSTANTS ———————
 const BULLET_SPEED       = 500;   // px/sec
-const BULLET_LIFETIME_MS = 4000;  // ms before a bullet disappears
+const BULLET_LIFETIME_MS = 4000;  // ms before disappearing
 
 // ——————— COLOURS ———————
 const COLORS = [
@@ -32,21 +32,34 @@ const COLORS = [
   '#911eb4','#42d4f4','#f032e6','#bfef45','#fabebe'
 ];
 
-// ——————— PLAYER & BULLET STORAGE ———————
-const players       = new Map();  // id → { ws, position, size, speed, alive, colour }
-const pendingClients = new Map(); // ws → id, while we wait for their dims
-let bullets         = [];         // { id, shooterId, x, y, dx, dy, createdAt }
-let nextBulletId    = 1;
+// ——————— STORAGE ———————
+const players        = new Map();  // id → { ws, position, size, speed, alive, colour }
+const pendingClients = new Map();  // ws → id
+let bullets          = [];         // { id, shooterId, x, y, dx, dy, createdAt }
+let nextBulletId     = 1;
 
-// Helper to pick a random point in the world (with padding)
-function randomSpawn() {
+// Clamp a position so a blob of given size stays fully within the world
+function clampPosition(pos, size) {
+  const half = size / 2;
   return {
-    x: SPAWN_PADDING + Math.random() * (worldWidth  - 2 * SPAWN_PADDING),
-    y: SPAWN_PADDING + Math.random() * (worldHeight - 2 * SPAWN_PADDING)
+    x: Math.min(Math.max(pos.x, half), worldWidth - half),
+    y: Math.min(Math.max(pos.y, half), worldHeight - half),
   };
 }
 
-// Broadcast the full game state to every client
+// Random spawn **around center** within padding
+function randomSpawn() {
+  const cx = worldWidth  / 2;
+  const cy = worldHeight / 2;
+  const rx = worldWidth  / 4;
+  const ry = worldHeight / 4;
+  let x = cx + (Math.random()*2 -1)*rx;
+  let y = cy + (Math.random()*2 -1)*ry;
+  x = Math.min(Math.max(x, SPAWN_PADDING), worldWidth  - SPAWN_PADDING);
+  y = Math.min(Math.max(y, SPAWN_PADDING), worldHeight - SPAWN_PADDING);
+  return { x, y };
+}
+
 function broadcastState() {
   const playerSnap = {};
   for (const [pid, p] of players.entries()) {
@@ -58,11 +71,7 @@ function broadcastState() {
       colour:   p.colour
     };
   }
-  const bulletSnap = bullets.map(b => ({
-    id: b.id,
-    x:  b.x,
-    y:  b.y
-  }));
+  const bulletSnap = bullets.map(b => ({ id: b.id, x: b.x, y: b.y }));
 
   const msg = JSON.stringify({
     type:    'update',
@@ -71,38 +80,31 @@ function broadcastState() {
   });
 
   for (const { ws } of players.values()) {
-    if (ws.readyState === WebSocket.OPEN) {
-      ws.send(msg);
-    }
+    if (ws.readyState === WebSocket.OPEN) ws.send(msg);
   }
 }
 
-// Handle melee collisions: mover always wins
 function handleMelee(attackerId) {
-  const attacker = players.get(attackerId);
-  if (!attacker || !attacker.alive) return;
-
-  for (const [otherId, other] of players.entries()) {
-    if (otherId === attackerId || !other.alive) continue;
-    const dx   = attacker.position.x - other.position.x;
-    const dy   = attacker.position.y - other.position.y;
+  const att = players.get(attackerId);
+  if (!att || !att.alive) return;
+  for (const [oid, other] of players.entries()) {
+    if (oid === attackerId || !other.alive) continue;
+    const dx = att.position.x - other.position.x;
+    const dy = att.position.y - other.position.y;
     const dist = Math.hypot(dx, dy);
-
-    if (dist < (attacker.size + other.size) / 2) {
-      attacker.size  += SIZE_INCREMENT;
-      attacker.speed  = Math.max(attacker.speed - SPEED_DECREMENT, MIN_SPEED);
-      killAndRespawn(otherId);
+    if (dist < (att.size + other.size)/2) {
+      att.size  += SIZE_INCREMENT;
+      att.speed  = Math.max(att.speed - SPEED_DECREMENT, MIN_SPEED);
+      killAndRespawn(oid);
     }
   }
 }
 
-// Kill a player, then respawn them randomly after a delay
 function killAndRespawn(pid) {
   const p = players.get(pid);
   if (!p || !p.alive) return;
   p.alive = false;
-  broadcastState(); // hide them immediately
-
+  broadcastState();
   setTimeout(() => {
     p.alive    = true;
     p.position = randomSpawn();
@@ -112,33 +114,29 @@ function killAndRespawn(pid) {
   }, RESPAWN_DELAY_MS);
 }
 
-// ——————— CONNECTION LOGIC ———————
-wss.on('connection', (ws) => {
-  // Assign a temporary ID and wait for the client to send its window size
+// ——————— NEW CONNECTION ———————
+wss.on('connection', ws => {
   const id = Date.now().toString();
   pendingClients.set(ws, id);
 
-  ws.on('message', (msg) => {
+  ws.on('message', msg => {
     let data;
     try { data = JSON.parse(msg); }
     catch { return; }
 
-    // ————— Handshake: receive window dimensions —————
+    // First handshake: get container size from client
     if (data.type === 'set_dimensions' && pendingClients.has(ws)) {
       const pid = pendingClients.get(ws);
       pendingClients.delete(ws);
 
-      // First client sets the world size
       if (worldWidth === null) {
         worldWidth  = data.width;
         worldHeight = data.height;
-        console.log(`World set to ${worldWidth} × ${worldHeight}`);
+        console.log(`World: ${worldWidth}×${worldHeight}`);
       }
 
-      // Now fully register the player
-      const spawn = randomSpawn();
-      const colour = COLORS[Math.floor(Math.random() * COLORS.length)];
-
+      const spawn  = randomSpawn();
+      const colour = COLORS[Math.floor(Math.random()*COLORS.length)];
       players.set(pid, {
         ws,
         position: spawn,
@@ -148,22 +146,19 @@ wss.on('connection', (ws) => {
         colour
       });
 
-      // Tell them their assigned ID
       ws.send(JSON.stringify({ type: 'init', id: pid }));
-      // And broadcast everyone the new state
       broadcastState();
       return;
     }
 
-    // ————— Other messages (move / fire) —————
+    // After handshake: movement or fire
     const pid = pendingClients.get(ws) || [...players].find(([k,v])=>v.ws===ws)?.[0];
-    if (!pid || !players.has(pid)) return;
-
+    if (!pid) return;
     const me = players.get(pid);
     if (!me.alive) return;
 
     if (data.type === 'move' && data.position) {
-      me.position = data.position;
+      me.position = clampPosition(data.position, me.size);
       handleMelee(pid);
       broadcastState();
     }
@@ -171,14 +166,13 @@ wss.on('connection', (ws) => {
       const { x: dx, y: dy } = data.direction;
       const mag = Math.hypot(dx, dy);
       if (mag > 0) {
-        const ux = dx / mag, uy = dy / mag;
         bullets.push({
           id:        nextBulletId++,
           shooterId: pid,
           x:         me.position.x,
           y:         me.position.y,
-          dx:        ux,
-          dy:        uy,
+          dx:        dx/mag,
+          dy:        dy/mag,
           createdAt: Date.now()
         });
       }
@@ -194,43 +188,40 @@ wss.on('connection', (ws) => {
   });
 });
 
-// ——————— BULLET TICK (runs every 50ms) ———————
-let lastTick = Date.now();
+// ——————— BULLET TICK ———————
+let last = Date.now();
 setInterval(() => {
-  // Don’t run until we know the world size
-  if (worldWidth === null || worldHeight === null) return;
-
+  if (worldWidth === null) return;
   const now = Date.now();
-  const dt  = (now - lastTick) / 1000;
-  lastTick  = now;
+  const dt  = (now - last)/1000;
+  last = now;
 
-  // Move each bullet
+  // Move & bounce
   bullets.forEach(b => {
     b.x += b.dx * BULLET_SPEED * dt;
     b.y += b.dy * BULLET_SPEED * dt;
+    // bounce X
+    if (b.x <= 0)  { b.x = 0;  b.dx *= -1; }
+    if (b.x >= worldWidth) { b.x = worldWidth; b.dx *= -1; }
+    // bounce Y
+    if (b.y <= 0)  { b.y = 0;  b.dy *= -1; }
+    if (b.y >= worldHeight){ b.y = worldHeight; b.dy *= -1; }
   });
 
-  // Collision & expiry
-  for (let i = bullets.length - 1; i >= 0; i--) {
-    const b   = bullets[i];
-    const age = now - b.createdAt;
-
-    // Remove if too old or out of bounds
-    if (age > BULLET_LIFETIME_MS ||
-        b.x < 0 || b.x > worldWidth ||
-        b.y < 0 || b.y > worldHeight) {
-      bullets.splice(i, 1);
+  // Expire by time & check hits
+  for (let i = bullets.length-1; i >= 0; i--) {
+    const b = bullets[i];
+    if (now - b.createdAt > BULLET_LIFETIME_MS) {
+      bullets.splice(i,1);
       continue;
     }
-
-    // Check hit against every alive player except the shooter
     for (const [pid, p] of players.entries()) {
       if (pid === b.shooterId || !p.alive) continue;
-      const dx   = p.position.x - b.x;
-      const dy   = p.position.y - b.y;
-      if (Math.hypot(dx, dy) < p.size / 2) {
+      const dx = p.position.x - b.x;
+      const dy = p.position.y - b.y;
+      if (Math.hypot(dx, dy) < p.size/2) {
         killAndRespawn(pid);
-        bullets.splice(i, 1);
+        bullets.splice(i,1);
         break;
       }
     }
@@ -239,8 +230,5 @@ setInterval(() => {
   broadcastState();
 }, 50);
 
-// ——————— START SERVER ———————
-const PORT = process.env.PORT || 3000;
-server.listen(PORT, () => {
-  console.log(`Server listening on http://localhost:${PORT}`);
-});
+const PORT = process.env.PORT||3000;
+server.listen(PORT,()=>console.log(`Listening on ${PORT}`));
