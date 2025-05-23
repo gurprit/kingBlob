@@ -1,125 +1,169 @@
+// public/client.js
+
+// 1. Create the socket
 const socket   = new WebSocket(`wss://${location.host}`);
 const gameArea = document.getElementById('gameArea');
 
-// my blob
+// 2. Send our window size on open for proper spawning
+socket.addEventListener('open', () => {
+  socket.send(JSON.stringify({
+    type:  'set_dimensions',
+    width: window.innerWidth,
+    height: window.innerHeight
+  }));
+});
+
+// --- Blob + Pointer setup ---
 const myBlob = document.createElement('div');
 myBlob.className = 'blob';
 gameArea.appendChild(myBlob);
 
-let playerId   = null;
-const blobs    = {};             // other players’ divs
-let myPosition = { x: 15, y: 15 };
-let mySpeed    = 50;
-let alive      = true;
+const pointer = document.createElement('div');
+pointer.className = 'pointer';
+myBlob.appendChild(pointer);
 
-// move & render helper
-function updateMyPosition() {
-  if (!myPosition) return;
-  myBlob.style.left = `${myPosition.x}px`;
-  myBlob.style.top  = `${myPosition.y}px`;
+// State
+let playerId           = null;
+let myPosition         = { x: 100, y: 100 };
+let mySpeed            = 40;
+let mySize             = 40;
+let alive              = true;
+let skipNextSelfUpdate = true;
+
+// Pointer rotation
+let pointerAngle    = 0;
+const POINTER_SPEED = 120; // deg/sec
+let lastPointerTime = performance.now();
+
+function animatePointer(now = performance.now()) {
+  const dt = (now - lastPointerTime) / 1000;
+  lastPointerTime = now;
+  pointerAngle = (pointerAngle + POINTER_SPEED * dt) % 360;
+  pointer.style.transform = `rotate(${pointerAngle}deg)`;
+  requestAnimationFrame(animatePointer);
+}
+requestAnimationFrame(animatePointer);
+
+// Render helpers
+function updatePointer() {
+  const length = mySize / 2 + 12;
+  pointer.style.width = `${length}px`;
 }
 
-// on socket open, announce ourselves
-socket.addEventListener('open', () => {
-  socket.send(JSON.stringify({ type: 'move', position: myPosition }));
-});
+function renderMe() {
+  myBlob.style.width  = `${mySize}px`;
+  myBlob.style.height = `${mySize}px`;
+  updatePointer();
+  myBlob.style.left   = `${myPosition.x - mySize/2}px`;
+  myBlob.style.top    = `${myPosition.y - mySize/2}px`;
+}
+renderMe();
 
-// handle server updates
-socket.addEventListener('message', (event) => {
-  const data = JSON.parse(event.data);
-  if (data.type === 'init') {
-    playerId = data.id;
+// Keep DOM elements for bullets
+const bullets = {}; // id → element
+
+// --- Socket Handlers ---
+socket.addEventListener('message', ev => {
+  const msg = JSON.parse(ev.data);
+
+  if (msg.type === 'init') {
+    playerId = msg.id;
     return;
   }
-  if (data.type !== 'update') return;
 
-  Object.entries(data.players).forEach(([id, info]) => {
-    const {
-      position: srvPos,
-      size:     srvSize,
-      speed:    srvSpeed,
-      alive:    srvAlive,
-      colour:   srvColour
-    } = info;
+  if (msg.type === 'update') {
+    // 1) Update all players
+    Object.entries(msg.players).forEach(([id, info]) => {
+      const isMe = id === playerId;
+      let el = isMe
+        ? myBlob
+        : document.querySelector(`.blob[data-id="${id}"]`);
 
-    if (id === playerId) {
-      // me
-      alive = srvAlive;
-      myBlob.style.display    = alive ? 'block' : 'none';
-      myBlob.style.background = srvColour;
-      if (!alive) return;
-
-      myPosition = srvPos;
-      mySpeed    = srvSpeed;
-      myBlob.style.width  = `${srvSize*2}px`;
-      myBlob.style.height = `${srvSize*2}px`;
-      updateMyPosition();
-    } else {
-      // others
-      if (!blobs[id]) {
-        const b = document.createElement('div');
-        b.className = 'blob';
-        gameArea.appendChild(b);
-        blobs[id] = b;
+      if (!el && !isMe) {
+        el = document.createElement('div');
+        el.className = 'blob';
+        el.dataset.id = id;
+        gameArea.appendChild(el);
       }
-      const b = blobs[id];
-      b.style.display    = srvAlive ? 'block' : 'none';
-      b.style.background = srvColour;
-      if (!srvAlive) return;
 
-      b.style.width  = `${srvSize}px`;
-      b.style.height = `${srvSize}px`;
-      b.style.left   = `${srvPos.x}px`;
-      b.style.top    = `${srvPos.y}px`;
-    }
-  });
-});
+      if (!el) return;
 
-// keyboard controls
-document.addEventListener('keydown', (e) => {
-  if (!alive) return;
-  switch (e.key) {
-    case 'ArrowUp':    case 'w': myPosition.y -= mySpeed; break;
-    case 'ArrowDown':  case 's': myPosition.y += mySpeed; break;
-    case 'ArrowLeft':  case 'a': myPosition.x -= mySpeed; break;
-    case 'ArrowRight': case 'd': myPosition.x += mySpeed; break;
-    default: return;
+      el.style.background = info.colour;
+      el.style.display    = info.alive ? 'block' : 'none';
+      if (!info.alive) return;
+
+      el.style.width  = `${info.size}px`;
+      el.style.height = `${info.size}px`;
+      el.style.left   = `${info.position.x - info.size/2}px`;
+      el.style.top    = `${info.position.y - info.size/2}px`;
+
+      if (isMe) {
+        if (skipNextSelfUpdate) {
+          skipNextSelfUpdate = false;
+        } else {
+          myPosition = info.position;
+          mySpeed    = info.speed;
+          mySize     = info.size;
+          renderMe();
+        }
+      }
+    });
+
+    // 2) Update bullets
+    const seen = new Set();
+    msg.bullets.forEach(b => {
+      seen.add(b.id);
+      let el = bullets[b.id];
+      if (!el) {
+        el = document.createElement('div');
+        el.className = 'bullet';
+        gameArea.appendChild(el);
+        bullets[b.id] = el;
+      }
+      el.style.left = `${b.x - 5}px`;
+      el.style.top  = `${b.y - 5}px`;
+    });
+    // remove bullets that disappeared server-side
+    Object.keys(bullets).forEach(id => {
+      if (!seen.has(Number(id))) {
+        bullets[id].remove();
+        delete bullets[id];
+      }
+    });
   }
-  updateMyPosition();
-  socket.send(JSON.stringify({ type: 'move', position: myPosition }));
 });
 
-// touch D-pad handlers (unchanged)
-const directions = {
-  up:    { dx:  0, dy: -1 },
-  down:  { dx:  0, dy:  1 },
-  left:  { dx: -1, dy:  0 },
-  right: { dx:  1, dy:  0 },
-};
-const repeatTimers = {};
+// --- Controls & Actions ---
+const moveBtn = document.getElementById('moveBtn');
+const fireBtn = document.getElementById('fireBtn');
 
-Object.keys(directions).forEach(dir => {
-  const btn = document.getElementById(dir);
-  btn.addEventListener('touchstart', e => {
-    e.preventDefault(); moveDir(dir);
-    repeatTimers[dir] = setInterval(() => moveDir(dir), 100);
-  });
-  ['touchend','touchcancel'].forEach(evt =>
-    btn.addEventListener(evt, e => {
-      e.preventDefault();
-      clearInterval(repeatTimers[dir]);
-    })
-  );
-});
+function getDirectionVector() {
+  const rad = pointerAngle * Math.PI/180;
+  return { x: Math.cos(rad), y: Math.sin(rad) };
+}
 
-function moveDir(dir) {
+function doMove() {
   if (!alive) return;
-  const { dx, dy } = directions[dir];
-  myPosition.x += dx * mySpeed;
-  myPosition.y += dy * mySpeed;
-  updateMyPosition();
+  const dir = getDirectionVector();
+  myPosition.x += dir.x * mySpeed;
+  myPosition.y += dir.y * mySpeed;
+  renderMe();
   socket.send(JSON.stringify({ type: 'move', position: myPosition }));
 }
 
-// initial draw
-updateMyPosition();
+function doFire() {
+  if (!alive) return;
+  const dir = getDirectionVector();
+  socket.send(JSON.stringify({ type: 'fire', direction: dir }));
+}
+
+['click','touchstart'].forEach(evt => {
+  moveBtn.addEventListener(evt, e => { e.preventDefault(); doMove(); });
+  fireBtn.addEventListener(evt, e => { e.preventDefault(); doFire(); });
+});
+
+// Desktop fallback
+document.addEventListener('keydown', e => {
+  if (e.key === 'm') doMove();
+  if (e.key === 'f') doFire();
+});
