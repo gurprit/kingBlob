@@ -89,18 +89,19 @@ socket.addEventListener('message', ev => {
     // Death explosion logic
     const prevInfo = previousPlayerInfo.get(id);
     if (prevInfo && prevInfo.alive && !info.alive) {
-      console.log(`Player ${id} died. Spawning explosion.`);
+      console.log(`Player ${id} died. Spawning pixel explosion.`);
       // Use prevInfo for position and color if info might be reset
       const explosionX = prevInfo.position ? prevInfo.position.x : info.position.x;
       const explosionY = prevInfo.position ? prevInfo.position.y : info.position.y;
       const explosionColor = prevInfo.colour || info.colour || 'grey';
 
-      spawnParticles(25, explosionX, explosionY, explosionColor, {
-        baseSpeed: 3,
+      // Updated parameters for "pixel" look death explosion
+      spawnParticles(15, explosionX, explosionY, explosionColor, {
+        baseSpeed: 2.5,
         // spread: Math.PI * 2, // Default for spawnParticles if no direction
-        drag: 0.97,
-        size: 6,
-        lifetime: 800
+        drag: 0.96,
+        size: 10, // Larger size for pixel effect
+        lifetime: 700
       });
     }
 
@@ -200,11 +201,12 @@ class Particle {
     this.y = y;
     this.vx = vx;
     this.vy = vy;
-    this.size = size;
+    this.size = size; // This is the spawned size
+    this.initialSize = size; // Store initial size for effects like shrinking
     this.color = color;
     this.lifetime = lifetime;
     this.element = element;
-    this.createdAt = Date.now(); // Or use remaining lifetime and decrement
+    this.createdAt = Date.now();
   }
 }
 
@@ -214,9 +216,9 @@ function spawnParticles(count, x, y, color, options = {}) {
   const baseSpeed = options.baseSpeed || 20; // pixels per second
   const spread = options.spread !== undefined ? options.spread : Math.PI * 2; // Full circle spread by default
   const drag = options.drag || 0.98;
-  const baseParticleSize = options.size || 5; // Use options.size as base
+  const particleSize = options.size || 5; // Use options.size directly
   const baseLifetime = options.lifetime || 1000; // milliseconds
-  const isFlameEffect = options.isFlame || false;
+  // Removed isFlameEffect
 
   let baseAngle = 0;
   if (options.direction && options.direction.x !== undefined && options.direction.y !== undefined) {
@@ -234,46 +236,30 @@ function spawnParticles(count, x, y, color, options = {}) {
     const vx = Math.cos(angle) * speed;
     const vy = Math.sin(angle) * speed;
 
-    // Particle size variation
-    const currentParticleSize = baseParticleSize * (0.8 + Math.random() * 0.4);
-
-    // Particle color variation for flame
-    let currentParticleColor = color;
-    if (isFlameEffect) {
-      const rand = Math.random();
-      if (rand < 0.3) {
-        currentParticleColor = 'yellow';
-      } else if (rand < 0.6) {
-        currentParticleColor = 'orange';
-      } // else use original color passed in
-    }
+    // Removed particle size variation for this revert
+    // Removed particle color variation for flame
 
     const element = document.createElement('div');
     element.className = 'particle';
     element.style.position = 'absolute'; // Important for positioning
-    element.style.width = `${currentParticleSize}px`;
-    element.style.height = `${currentParticleSize}px`;
-    element.style.backgroundColor = currentParticleColor;
-    element.style.left = `${x - currentParticleSize / 2}px`;
-    element.style.top = `${y - currentParticleSize / 2}px`;
+    element.style.width = `${particleSize}px`; // Use direct particleSize
+    element.style.height = `${particleSize}px`; // Use direct particleSize
+    element.style.backgroundColor = color; // Use direct color
+    element.style.left = `${x - particleSize / 2}px`;
+    element.style.top = `${y - particleSize / 2}px`;
     gameArea.appendChild(element);
 
     const particle = new Particle(
       x, y,
       vx, vy,
-      currentParticleSize,
-      currentParticleColor,
-      baseLifetime, // Store initial lifetime
+      particleSize, // Use direct particleSize
+      color,        // Use direct color
+      baseLifetime,
       element
     );
-    particle.drag = drag; // Store drag if needed for updateParticles
+    particle.drag = drag;
 
-    if (isFlameEffect) {
-      particle.isFlame = true;
-      particle.initialSize = currentParticleSize; // Store initial size for flame effect
-      // p.color already stores its initial spawned color (player, yellow, or orange)
-    }
-
+    // Removed isFlame and specific initialSize setting here (done in constructor)
     particles.push(particle);
   }
 }
@@ -303,41 +289,22 @@ function updateParticles() {
       p.element.remove();
       particles.splice(i, 1);
     } else {
-      // Default style updates
-      p.element.style.left = `${p.x - p.size / 2}px`;
-      p.element.style.top = `${p.y - p.size / 2}px`;
+      const lifetimeProgress = Math.min(age / p.lifetime, 1.0);
 
-      if (p.isFlame) {
-        const lifetimeProgress = Math.min(age / p.lifetime, 1.0);
+      // Generic Opacity Fade
+      p.element.style.opacity = Math.max(0, 1 - lifetimeProgress);
 
-        // Opacity (fade out a bit faster)
-        p.element.style.opacity = Math.max(0, 1 - lifetimeProgress * 1.2);
+      // Generic Shrinking
+      const currentSize = p.initialSize * Math.max(0, 1 - lifetimeProgress);
+      p.element.style.width = `${currentSize}px`;
+      p.element.style.height = `${currentSize}px`;
+      p.element.style.left = `${p.x - currentSize / 2}px`;
+      p.element.style.top = `${p.y - currentSize / 2}px`;
 
-        // Size (shrinking)
-        const currentSize = p.initialSize * Math.max(0, 1 - lifetimeProgress);
-        p.element.style.width = `${currentSize}px`;
-        p.element.style.height = `${currentSize}px`;
-        // Adjust positioning for shrinking size to keep center
-        p.element.style.left = `${p.x - currentSize / 2}px`;
-        p.element.style.top = `${p.y - currentSize / 2}px`;
-
-
-        // Color transition
-        // p.color stores its initial spawned color
-        if (p.color === 'yellow') {
-          if (lifetimeProgress > 0.75) {
-            p.element.style.backgroundColor = 'red';
-          } else if (lifetimeProgress > 0.4) {
-            p.element.style.backgroundColor = 'orange';
-          }
-        } else if (p.color === 'orange') {
-          if (lifetimeProgress > 0.6) {
-            p.element.style.backgroundColor = 'red';
-          }
-        }
-        // Player's original color particles (if part of flame) will just fade and shrink
-        // as no specific color transition is defined for them here.
-      }
+      // Ensure p.element.style.backgroundColor is set if it wasn't, or reset if needed
+      // (though particles are created with a color, so this might not be strictly necessary unless colors were changed)
+      // For this revert, we assume particles retain their spawned color.
+      // No flame-specific color transitions.
     }
   }
 }
@@ -359,16 +326,15 @@ function doMove() {
   renderMe();
   socket.send(JSON.stringify({ type: 'move', position: myPosition }));
 
-  // Spawn movement particles - Enhanced for "sci-fi flame" effect
-  const playerColorForFlame = myBlob.style.background || 'grey'; // Fallback color
-  spawnParticles(18, myPosition.x, myPosition.y, playerColorForFlame, { // Increased count
+  // Spawn movement particles - Updated for "pixel" look
+  const particleColor = myBlob.style.background || 'grey'; // Fallback color
+  spawnParticles(3, myPosition.x, myPosition.y, particleColor, { // count adjusted
     direction: { x: -moveDir.x, y: -moveDir.y },
-    baseSpeed: 4,         // Increased speed
-    spread: Math.PI / 10, // Adjusted spread (18 degrees)
-    drag: 0.93,           // Adjusted drag
-    size: 6,              // Adjusted base size
-    lifetime: 500,        // Adjusted lifetime
-    isFlame: true         // Flag for flame-specific logic in spawnParticles
+    baseSpeed: 1.5,       // baseSpeed adjusted
+    spread: Math.PI / 7,  // spread adjusted
+    drag: 0.92,           // drag adjusted
+    size: 8,              // Larger size for pixel effect
+    lifetime: 350         // lifetime adjusted
   });
 }
 
