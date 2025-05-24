@@ -41,7 +41,7 @@ html, body {
   width: 10px;
   height: 10px;
   border-radius: 50%;
-  background: black;
+  /* background: black; /* Default removed, JS sets color from server */
   pointer-events: none;
 }
 
