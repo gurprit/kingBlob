@@ -31,7 +31,7 @@ html, body {
   position: absolute;
   top: 50%;
   left: 50%;
-  transform-origin: 0 0;
+  transform-origin: 1px 1px;
   height: 3px;
   background: #333;
 }
@@ -52,6 +52,7 @@ html, body {
   border-radius: 0; /* Changed from 50% to make particles square */
   background-color: #ccc; /* A default, will be overridden */
   pointer-events: none;
+  //filter:blur(10px) contrast(10);
 }
 
 #controls {
@@ -84,14 +85,15 @@ html, body {
 }
 
 .score-display {
-  position: absolute;
-  bottom: 100%; /* Position above the blob */
-  left: 50%;
-  transform: translateX(-50%);
-  padding-bottom: 5px; /* Some space between score and blob */
-  font-size: 16px; /* Adjust as needed */
-  color: white;
-  text-shadow: 1px 1px 1px black, -1px -1px 1px black, 1px -1px 1px black, -1px 1px 1px black; /* Outline for readability */
-  white-space: nowrap; /* Prevent score from wrapping */
-  pointer-events: none; /* So it doesn't interfere with clicks */
+    position: absolute;
+    bottom: 40px;
+    left: 108%;
+    transform: translateX(-50%);
+    padding: 0 5px;
+    font-size: 13px;
+    background: black;
+    color: #ffffff;
+    white-space: nowrap;
+    pointer-events: none;
+    font-family: Futura,Trebuchet MS,Arial,sans-serif;
 }

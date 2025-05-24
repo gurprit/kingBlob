@@ -100,7 +100,7 @@ socket.addEventListener('message', ev => {
         baseSpeed: 2.5,
         // spread: Math.PI * 2, // Default for spawnParticles if no direction
         drag: 0.96,
-        size: 10, // Larger size for pixel effect
+        size: 20, // Larger size for pixel effect
         lifetime: 700
       });
     }
@@ -329,13 +329,13 @@ function doMove() {
 
   // Spawn movement particles - Updated for "pixel" look
   const particleColor = myBlob.style.background || 'grey'; // Fallback color
-  spawnParticles(3, myPosition.x, myPosition.y, particleColor, { // count adjusted
+  spawnParticles(3, myPosition.x, myPosition.y, particleColor, { 
     direction: { x: -moveDir.x, y: -moveDir.y },
-    baseSpeed: 1.5,       // baseSpeed adjusted
-    spread: Math.PI / 7,  // spread adjusted
-    drag: 0.92,           // drag adjusted
-    size: 8,              // Larger size for pixel effect
-    lifetime: 350         // lifetime adjusted
+    baseSpeed: 2.5,
+    spread: Math.PI / 7,
+    drag: 1,
+    size: 30,
+    lifetime: 2000
   });
 }
 
