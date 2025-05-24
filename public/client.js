@@ -214,8 +214,9 @@ function spawnParticles(count, x, y, color, options = {}) {
   const baseSpeed = options.baseSpeed || 20; // pixels per second
   const spread = options.spread !== undefined ? options.spread : Math.PI * 2; // Full circle spread by default
   const drag = options.drag || 0.98;
-  const particleSize = options.size || 5;
+  const baseParticleSize = options.size || 5; // Use options.size as base
   const baseLifetime = options.lifetime || 1000; // milliseconds
+  const isFlameEffect = options.isFlame || false;
 
   let baseAngle = 0;
   if (options.direction && options.direction.x !== undefined && options.direction.y !== undefined) {
@@ -233,25 +234,45 @@ function spawnParticles(count, x, y, color, options = {}) {
     const vx = Math.cos(angle) * speed;
     const vy = Math.sin(angle) * speed;
 
+    // Particle size variation
+    const currentParticleSize = baseParticleSize * (0.8 + Math.random() * 0.4);
+
+    // Particle color variation for flame
+    let currentParticleColor = color;
+    if (isFlameEffect) {
+      const rand = Math.random();
+      if (rand < 0.3) {
+        currentParticleColor = 'yellow';
+      } else if (rand < 0.6) {
+        currentParticleColor = 'orange';
+      } // else use original color passed in
+    }
+
     const element = document.createElement('div');
     element.className = 'particle';
     element.style.position = 'absolute'; // Important for positioning
-    element.style.width = `${particleSize}px`;
-    element.style.height = `${particleSize}px`;
-    element.style.backgroundColor = color;
-    element.style.left = `${x - particleSize / 2}px`;
-    element.style.top = `${y - particleSize / 2}px`;
+    element.style.width = `${currentParticleSize}px`;
+    element.style.height = `${currentParticleSize}px`;
+    element.style.backgroundColor = currentParticleColor;
+    element.style.left = `${x - currentParticleSize / 2}px`;
+    element.style.top = `${y - currentParticleSize / 2}px`;
     gameArea.appendChild(element);
 
     const particle = new Particle(
       x, y,
       vx, vy,
-      particleSize,
-      color,
+      currentParticleSize,
+      currentParticleColor,
       baseLifetime, // Store initial lifetime
       element
     );
     particle.drag = drag; // Store drag if needed for updateParticles
+
+    if (isFlameEffect) {
+      particle.isFlame = true;
+      particle.initialSize = currentParticleSize; // Store initial size for flame effect
+      // p.color already stores its initial spawned color (player, yellow, or orange)
+    }
 
     particles.push(particle);
   }
@@ -282,11 +303,41 @@ function updateParticles() {
       p.element.remove();
       particles.splice(i, 1);
     } else {
-      // Update DOM element's style
+      // Default style updates
       p.element.style.left = `${p.x - p.size / 2}px`;
       p.element.style.top = `${p.y - p.size / 2}px`;
-      // Optional: Fade out particles
-      // p.element.style.opacity = 1 - (age / p.lifetime);
+
+      if (p.isFlame) {
+        const lifetimeProgress = Math.min(age / p.lifetime, 1.0);
+
+        // Opacity (fade out a bit faster)
+        p.element.style.opacity = Math.max(0, 1 - lifetimeProgress * 1.2);
+
+        // Size (shrinking)
+        const currentSize = p.initialSize * Math.max(0, 1 - lifetimeProgress);
+        p.element.style.width = `${currentSize}px`;
+        p.element.style.height = `${currentSize}px`;
+        // Adjust positioning for shrinking size to keep center
+        p.element.style.left = `${p.x - currentSize / 2}px`;
+        p.element.style.top = `${p.y - currentSize / 2}px`;
+
+
+        // Color transition
+        // p.color stores its initial spawned color
+        if (p.color === 'yellow') {
+          if (lifetimeProgress > 0.75) {
+            p.element.style.backgroundColor = 'red';
+          } else if (lifetimeProgress > 0.4) {
+            p.element.style.backgroundColor = 'orange';
+          }
+        } else if (p.color === 'orange') {
+          if (lifetimeProgress > 0.6) {
+            p.element.style.backgroundColor = 'red';
+          }
+        }
+        // Player's original color particles (if part of flame) will just fade and shrink
+        // as no specific color transition is defined for them here.
+      }
     }
   }
 }
@@ -308,15 +359,16 @@ function doMove() {
   renderMe();
   socket.send(JSON.stringify({ type: 'move', position: myPosition }));
 
-  // Spawn movement particles
-  const particleColor = myBlob.style.background || 'grey'; // Fallback color
-  spawnParticles(4, myPosition.x, myPosition.y, particleColor, {
-    direction: { x: -moveDir.x, y: -moveDir.y }, // Opposite direction
-    baseSpeed: 2, // Small speed
-    spread: Math.PI / 8, // Approx 22.5 degrees spread
-    drag: 0.95,
-    size: 4, // Small size
-    lifetime: 400 // Short lifetime
+  // Spawn movement particles - Enhanced for "sci-fi flame" effect
+  const playerColorForFlame = myBlob.style.background || 'grey'; // Fallback color
+  spawnParticles(18, myPosition.x, myPosition.y, playerColorForFlame, { // Increased count
+    direction: { x: -moveDir.x, y: -moveDir.y },
+    baseSpeed: 4,         // Increased speed
+    spread: Math.PI / 10, // Adjusted spread (18 degrees)
+    drag: 0.93,           // Adjusted drag
+    size: 6,              // Adjusted base size
+    lifetime: 500,        // Adjusted lifetime
+    isFlame: true         // Flag for flame-specific logic in spawnParticles
   });
 }
 
