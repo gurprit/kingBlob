@@ -342,33 +342,36 @@ function doFire() {
 }
 
 // Accelerometer Controls
-let lastFireTime = 0;
-const tiltThreshold = 1.5;    // m/s^2 - Dead zone for tilt detection
-const tiltSensitivity = 0.02; // Adjust this to control speed scaling from tilt
-const shakeThreshold = 20; // m/s^2, for shake detection sensitivity
-const fireCooldown = 500;  // milliseconds, to prevent rapid firing
+const tiltThreshold = 1.0;    // Was 1.5
+const tiltSensitivity = 0.05; // Was 0.02
 
 function handleDeviceMotion(event) {
     if (!alive) return;
 
     const acc = event.accelerationIncludingGravity;
+    // Axis mapping for Portrait Mode:
+    // - Device's physical X-axis (shorter side, left/right tilt) for game's X-axis.
+    // - Device's physical Y-axis (longer side, forward/backward tilt) for game's Y-axis.
+
     let effectiveDx = 0; // Effective change in game X-axis, pixels per event
     let effectiveDy = 0; // Effective change in game Y-axis, pixels per event
 
-    // Axis mapping assumption for landscape mode:
-    // Device's physical Y-axis (longer side) for game's X-axis (left/right).
-    // Device's physical X-axis (shorter side) for game's Y-axis (forward/backward).
-
-    // Game X-axis movement (Left/Right): Using acc.y
-    // Positive acc.y (device's right side tilted down) moves player right (increase game X).
-    if (acc.y !== null && Math.abs(acc.y) > tiltThreshold) {
-        effectiveDx = (acc.y - Math.sign(acc.y) * tiltThreshold) * tiltSensitivity * mySpeed;
+    // Game X-axis movement (Left/Right): Using acc.x
+    // Positive acc.x (device's physical right side tilted down) should move player right (increase game X).
+    if (acc.x !== null && Math.abs(acc.x) > tiltThreshold) {
+        effectiveDx = (acc.x - Math.sign(acc.x) * tiltThreshold) * tiltSensitivity * mySpeed;
     }
 
-    // Game Y-axis movement (Forward/Backward): Using acc.x
-    // Positive acc.x (device's top edge tilted down/forward) moves player "up" on screen (decrease game Y).
-    if (acc.x !== null && Math.abs(acc.x) > tiltThreshold) {
-        effectiveDy = -(acc.x - Math.sign(acc.x) * tiltThreshold) * tiltSensitivity * mySpeed;
+    // Game Y-axis movement (Up/Down on screen): Using acc.y
+    // Positive acc.y (device's physical bottom edge tilted down - effectively "tilting back" from user view if top is Y=0)
+    // should move player "down" on screen (increase game Y).
+    // Negative acc.y (device's physical top edge tilted down - "tilting forward")
+    // should move player "up" on screen (decrease game Y).
+    if (acc.y !== null && Math.abs(acc.y) > tiltThreshold) {
+        // If acc.y is negative (tilt forward, top down), we want myPosition.y to decrease.
+        // (acc.y - Math.sign(acc.y) * tiltThreshold) will be more negative.
+        // So, this direct assignment should work.
+        effectiveDy = (acc.y - Math.sign(acc.y) * tiltThreshold) * tiltSensitivity * mySpeed;
     }
 
     if (effectiveDx !== 0 || effectiveDy !== 0) {
@@ -397,25 +400,6 @@ function handleDeviceMotion(event) {
             });
         }
     }
-
-    // Shake detection for firing
-    const accNoGravity = event.acceleration; // Attempt to use acceleration excluding gravity
-
-    if (accNoGravity && (accNoGravity.x !== null || accNoGravity.y !== null || accNoGravity.z !== null)) {
-        const magnitude = Math.sqrt(
-            Math.pow(accNoGravity.x || 0, 2) +
-            Math.pow(accNoGravity.y || 0, 2) +
-            Math.pow(accNoGravity.z || 0, 2)
-        );
-
-        const currentTime = performance.now(); // Use a consistent name for current time
-        if (magnitude > shakeThreshold && (currentTime - lastFireTime) > fireCooldown) {
-            if (alive) { // Ensure player is alive before firing
-                doFire();
-                lastFireTime = currentTime;
-            }
-        }
-    }
 }
 
 // Register the event listener for device motion
@@ -426,6 +410,23 @@ if (window.DeviceMotionEvent) {
     // Consider adding a user-facing message if this feature is critical.
     // const motionStatusElement = document.getElementById('motionStatus');
     // if (motionStatusElement) motionStatusElement.textContent = "Accelerometer controls not supported.";
+}
+
+// Tap-to-fire controls
+function handleTapToFire(event) {
+    event.preventDefault(); // Prevent default browser actions (scrolling, zooming)
+    if (alive) { // Check if player is alive
+        doFire();
+    }
+}
+
+// Listen for touchstart on the gameArea
+if (gameArea) { // Ensure gameArea is defined
+    gameArea.addEventListener('touchstart', handleTapToFire, { passive: false });
+    // Optionally, add mousedown for desktop testing convenience
+    gameArea.addEventListener('mousedown', handleTapToFire, { passive: false });
+} else {
+    console.error("gameArea not found for tap-to-fire listener.");
 }
 
 // desktop fallback
