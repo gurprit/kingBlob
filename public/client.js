@@ -42,6 +42,9 @@ function animatePointer(now = performance.now()) {
   lastP = now;
   pointerAngle = (pointerAngle + POINTER_SPEED * dt) % 360;
   pointer.style.transform = `rotate(${pointerAngle}deg)`;
+
+  updateParticles(); // Update and render all active particles
+
   requestAnimationFrame(animatePointer);
 }
 requestAnimationFrame(animatePointer);
@@ -61,6 +64,8 @@ renderMe();
 
 // Track bullets by ID
 const bullets = {};
+// Track previous player states for effects like death explosions
+const previousPlayerInfo = new Map();
 
 // Handle server messages
 socket.addEventListener('message', ev => {
@@ -73,11 +78,31 @@ socket.addEventListener('message', ev => {
   if (msg.type !== 'update') return;
 
   // Players
+  const currentPlayerIds = new Set();
   Object.entries(msg.players).forEach(([id, info]) => {
+    currentPlayerIds.add(id);
     const isMe = id === playerId;
     let el = isMe
       ? myBlob
       : document.querySelector(`.blob[data-id="${id}"]`);
+
+    // Death explosion logic
+    const prevInfo = previousPlayerInfo.get(id);
+    if (prevInfo && prevInfo.alive && !info.alive) {
+      console.log(`Player ${id} died. Spawning explosion.`);
+      // Use prevInfo for position and color if info might be reset
+      const explosionX = prevInfo.position ? prevInfo.position.x : info.position.x;
+      const explosionY = prevInfo.position ? prevInfo.position.y : info.position.y;
+      const explosionColor = prevInfo.colour || info.colour || 'grey';
+
+      spawnParticles(25, explosionX, explosionY, explosionColor, {
+        baseSpeed: 3,
+        // spread: Math.PI * 2, // Default for spawnParticles if no direction
+        drag: 0.97,
+        size: 6,
+        lifetime: 800
+      });
+    }
 
     if (!el && !isMe) {
       el = document.createElement('div');
@@ -85,27 +110,50 @@ socket.addEventListener('message', ev => {
       el.dataset.id = id;
       gameArea.appendChild(el);
     }
-    if (!el) return;
+    if (!el) { // If element still not found (e.g. for 'me' if myBlob issue), store state and skip DOM
+      previousPlayerInfo.set(id, { ...info });
+      return;
+    }
 
     el.style.background = info.colour;
     el.style.display    = info.alive ? 'block' : 'none';
-    if (!info.alive) return;
+
+    // Store the current state for the next update BEFORE returning if not alive
+    // This ensures we have the 'dead' state recorded.
+    previousPlayerInfo.set(id, { ...info });
+
+    if (!info.alive) {
+        // If it's the local player and they died, update their 'alive' state
+        if (isMe) {
+            alive = false;
+        }
+        return; // Skip further processing for dead players
+    }
 
     el.style.width  = `${info.size}px`;
     el.style.height = `${info.size}px`;
     el.style.left   = `${info.position.x - info.size/2}px`;
     el.style.top    = `${info.position.y - info.size/2}px`;
 
-    if (!el.scoreElement) {                                 // <<< ADD THIS
-      el.scoreElement = document.createElement('div');      // <<< ADD THIS
-      el.scoreElement.className = 'score-display';          // <<< ADD THIS
-      el.appendChild(el.scoreElement);                      // <<< ADD THIS
-    }                                                       // <<< ADD THIS
-    el.scoreElement.textContent = info.score;               // <<< ADD THIS
+    if (!el.scoreElement) {
+      el.scoreElement = document.createElement('div');
+      el.scoreElement.className = 'score-display';
+      el.appendChild(el.scoreElement);
+    }
+    el.scoreElement.textContent = info.score;
 
     if (isMe) {
-      if (skipNextSelfUpdate) skipNextSelfUpdate = false;
-      else {
+      // Update local player's 'alive' state based on server info
+      alive = info.alive; 
+
+      if (skipNextSelfUpdate) {
+        skipNextSelfUpdate = false;
+        // Ensure myPosition is initialized from the first server update if skipped
+        myPosition = info.position; 
+        mySpeed    = info.speed;
+        mySize     = info.size;
+        renderMe(); // Render once with initial server state
+      } else {
         myPosition = info.position;
         mySpeed    = info.speed;
         mySize     = info.size;
@@ -113,6 +161,14 @@ socket.addEventListener('message', ev => {
       }
     }
   });
+
+  // Clean up players that are no longer sent by the server
+  for (const id of previousPlayerInfo.keys()) {
+    if (!currentPlayerIds.has(id)) {
+      previousPlayerInfo.delete(id);
+      console.log(`Removed player ${id} from previousPlayerInfo`);
+    }
+  }
 
   // Bullets
   const seen = new Set();
@@ -137,6 +193,104 @@ socket.addEventListener('message', ev => {
   });
 });
 
+// Particle System
+class Particle {
+  constructor(x, y, vx, vy, size, color, lifetime, element) {
+    this.x = x;
+    this.y = y;
+    this.vx = vx;
+    this.vy = vy;
+    this.size = size;
+    this.color = color;
+    this.lifetime = lifetime;
+    this.element = element;
+    this.createdAt = Date.now(); // Or use remaining lifetime and decrement
+  }
+}
+
+let particles = [];
+
+function spawnParticles(count, x, y, color, options = {}) {
+  const baseSpeed = options.baseSpeed || 20; // pixels per second
+  const spread = options.spread !== undefined ? options.spread : Math.PI * 2; // Full circle spread by default
+  const drag = options.drag || 0.98;
+  const particleSize = options.size || 5;
+  const baseLifetime = options.lifetime || 1000; // milliseconds
+
+  let baseAngle = 0;
+  if (options.direction && options.direction.x !== undefined && options.direction.y !== undefined) {
+    baseAngle = Math.atan2(options.direction.y, options.direction.x);
+  } else {
+    // If no direction, pick a random base angle for full spread
+    baseAngle = Math.random() * Math.PI * 2;
+  }
+
+  for (let i = 0; i < count; i++) {
+    // Apply spread relative to baseAngle
+    const angle = baseAngle + (Math.random() - 0.5) * spread;
+    const speed = baseSpeed * (0.5 + Math.random() * 0.5); // Vary speed a bit
+
+    const vx = Math.cos(angle) * speed;
+    const vy = Math.sin(angle) * speed;
+
+    const element = document.createElement('div');
+    element.className = 'particle';
+    element.style.position = 'absolute'; // Important for positioning
+    element.style.width = `${particleSize}px`;
+    element.style.height = `${particleSize}px`;
+    element.style.backgroundColor = color;
+    element.style.left = `${x - particleSize / 2}px`;
+    element.style.top = `${y - particleSize / 2}px`;
+    gameArea.appendChild(element);
+
+    const particle = new Particle(
+      x, y,
+      vx, vy,
+      particleSize,
+      color,
+      baseLifetime, // Store initial lifetime
+      element
+    );
+    particle.drag = drag; // Store drag if needed for updateParticles
+
+    particles.push(particle);
+  }
+}
+
+function updateParticles() {
+  const now = Date.now();
+  const dt = 16 / 1000; // Approximate delta time, assuming 60fps. Better to pass actual dt.
+
+  for (let i = particles.length - 1; i >= 0; i--) {
+    const p = particles[i];
+
+    // Update position
+    p.x += p.vx * dt * 10; // Scale velocity for visible movement
+    p.y += p.vy * dt * 10; // Scale velocity for visible movement
+
+
+    // Apply drag if it exists
+    if (p.drag) {
+      p.vx *= p.drag;
+      p.vy *= p.drag;
+    }
+
+    // Update lifetime
+    // If lifetime is stored as initial lifetime and we use createdAt:
+    const age = now - p.createdAt;
+    if (age >= p.lifetime) {
+      p.element.remove();
+      particles.splice(i, 1);
+    } else {
+      // Update DOM element's style
+      p.element.style.left = `${p.x - p.size / 2}px`;
+      p.element.style.top = `${p.y - p.size / 2}px`;
+      // Optional: Fade out particles
+      // p.element.style.opacity = 1 - (age / p.lifetime);
+    }
+  }
+}
+
 // Controls
 const moveBtn = document.getElementById('moveBtn');
 const fireBtn = document.getElementById('fireBtn');
@@ -148,11 +302,22 @@ function getDir() {
 
 function doMove() {
   if (!alive) return;
-  const d = getDir();
-  myPosition.x += d.x * mySpeed;
-  myPosition.y += d.y * mySpeed;
+  const moveDir = getDir();
+  myPosition.x += moveDir.x * mySpeed;
+  myPosition.y += moveDir.y * mySpeed;
   renderMe();
   socket.send(JSON.stringify({ type: 'move', position: myPosition }));
+
+  // Spawn movement particles
+  const particleColor = myBlob.style.background || 'grey'; // Fallback color
+  spawnParticles(4, myPosition.x, myPosition.y, particleColor, {
+    direction: { x: -moveDir.x, y: -moveDir.y }, // Opposite direction
+    baseSpeed: 2, // Small speed
+    spread: Math.PI / 8, // Approx 22.5 degrees spread
+    drag: 0.95,
+    size: 4, // Small size
+    lifetime: 400 // Short lifetime
+  });
 }
 
 function doFire() {
