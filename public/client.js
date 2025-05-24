@@ -328,15 +328,15 @@ function doMove() {
   socket.send(JSON.stringify({ type: 'move', position: myPosition }));
 
   // Spawn movement particles - Updated for "pixel" look
-  const particleColor = myBlob.style.background || 'grey'; // Fallback color
-  spawnParticles(3, myPosition.x, myPosition.y, particleColor, { 
-    direction: { x: -moveDir.x, y: -moveDir.y },
-    baseSpeed: 2.5,
-    spread: Math.PI / 7,
-    drag: 1,
-    size: 30,
-    lifetime: 2000
-  });
+  //const particleColor = myBlob.style.background || 'grey'; // Fallback color
+  //spawnParticles(3, myPosition.x, myPosition.y, particleColor, { 
+  //  direction: { x: -moveDir.x, y: -moveDir.y },
+  //  baseSpeed: 2.5,
+  //  spread: Math.PI / 7,
+  //  drag: 1,
+  //  size: 30,
+  //  lifetime: 2000
+  //});
 }
 
 function doFire() {
