@@ -2,6 +2,42 @@
 const socket   = new WebSocket(`wss://${location.host}`);
 const gameArea = document.getElementById('gameArea');
 
+// 1. Socket setup
+const socket   = new WebSocket(`wss://${location.host}`);
+const gameArea = document.getElementById('gameArea');
+
+const MAX_SHIELD_THICKNESS_PX = 10; // Maximum thickness for the shield ring
+
+// Function to update player shield visual
+function updateShield(playerElement, shieldStrength, playerColor) {
+  if (!playerElement) return;
+
+  let shieldEl = playerElement.shieldElement;
+  if (!shieldEl) {
+    shieldEl = document.createElement('div');
+    shieldEl.className = 'shield-ring';
+    playerElement.appendChild(shieldEl);
+    playerElement.shieldElement = shieldEl; // Store it for future updates
+  }
+
+  if (shieldStrength > 0) {
+    shieldEl.style.display = 'block';
+    const thickness = (shieldStrength / 100) * MAX_SHIELD_THICKNESS_PX;
+    shieldEl.style.borderWidth = `${thickness}px`;
+    shieldEl.style.borderColor = playerColor;
+    // Ensure the shield ring is circular and centered
+    shieldEl.style.position = 'absolute';
+    shieldEl.style.width = '100%'; // Match parent blob's width
+    shieldEl.style.height = '100%'; // Match parent blob's height
+    shieldEl.style.top = `-${thickness}px`; // Offset by border thickness
+    shieldEl.style.left = `-${thickness}px`; // Offset by border thickness
+    shieldEl.style.borderRadius = '50%';
+    shieldEl.style.boxSizing = 'border-box';
+  } else {
+    shieldEl.style.display = 'none';
+  }
+}
+
 // 2. Tell server our container size
 socket.addEventListener('open', () => {
   socket.send(JSON.stringify({
@@ -143,6 +179,9 @@ socket.addEventListener('message', ev => {
     }
     el.scoreElement.textContent = info.score;
 
+    // Update shield for the player
+    updateShield(el, info.shield, info.colour);
+
     if (isMe) {
       // Update local player's 'alive' state based on server info
       alive = info.alive; 
@@ -153,11 +192,13 @@ socket.addEventListener('message', ev => {
         myPosition = info.position; 
         mySpeed    = info.speed;
         mySize     = info.size;
+        // myBlob already has its shield updated by the generic 'el' logic above
         renderMe(); // Render once with initial server state
       } else {
         myPosition = info.position;
         mySpeed    = info.speed;
         mySize     = info.size;
+        // myBlob already has its shield updated by the generic 'el' logic above
         renderMe();
       }
     }

@@ -97,3 +97,17 @@ html, body {
     pointer-events: none;
     font-family: Futura,Trebuchet MS,Arial,sans-serif;
 }
+
+.shield-ring {
+  position: absolute;
+  width: 100%;
+  height: 100%;
+  top: 0;
+  left: 0;
+  border-radius: 50%;
+  box-sizing: border-box;
+  border-style: solid;
+  border-color: transparent; /* Default, will be overridden by JS */
+  pointer-events: none; /* Shield is visual only */
+  /* The actual border-width and final border-color will be set by JS */
+}
