@@ -38,7 +38,7 @@ const COLORS = [
 // ——————— STORAGE ———————
 const players        = new Map();  // id → { ws, position, size, speed, alive, colour }
 const pendingClients = new Map();  // ws → id
-let bullets          = [];         // { id, shooterId, x, y, dx, dy, createdAt }
+let bullets          = [];         // { id, shooterId, x, y, dx, dy, createdAt, color } // Added color
 let nextBulletId     = 1;
 
 // Clamp a position so a blob of given size stays fully within the world
@@ -83,7 +83,8 @@ function broadcastState() {
   const bulletSnap = bullets.map(b => ({
     id: b.id,
     x:  b.x,
-    y:  b.y
+    y:  b.y,
+    color: b.color // <<< ADDED THIS LINE for broadcasting bullet color
   }));
 
   const msg = JSON.stringify({
@@ -199,7 +200,8 @@ wss.on('connection', ws => {
           y:         me.position.y,
           dx:        dx / mag,
           dy:        dy / mag,
-          createdAt: Date.now()
+          createdAt: Date.now(),
+          color:     me.colour // <<< ADDED THIS LINE to store shooter's color
         });
       }
     }

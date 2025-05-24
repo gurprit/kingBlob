@@ -182,8 +182,9 @@ socket.addEventListener('message', ev => {
       gameArea.appendChild(el);
       bullets[b.id] = el;
     }
-    el.style.left = `${b.x - 5}px`;
-    el.style.top  = `${b.y - 5}px`;
+    el.style.left = `${b.x - 5}px`; // Assuming bullet radius is 5
+    el.style.top  = `${b.y - 5}px`; // Assuming bullet radius is 5
+    el.style.backgroundColor = b.color; // Apply color from server
   });
   // remove old bullets
   Object.keys(bullets).forEach(id => {
