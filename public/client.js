@@ -311,9 +311,6 @@ function updateParticles() {
 }
 
 // Controls
-const moveBtn = document.getElementById('moveBtn');
-const fireBtn = document.getElementById('fireBtn');
-
 function getDir() {
   const rad = pointerAngle * Math.PI/180;
   return { x: Math.cos(rad), y: Math.sin(rad) };
@@ -344,10 +341,92 @@ function doFire() {
   socket.send(JSON.stringify({ type: 'fire', direction: getDir() }));
 }
 
-['click','touchstart'].forEach(evt => {
-  moveBtn.addEventListener(evt, e => { e.preventDefault(); doMove(); });
-  fireBtn.addEventListener(evt, e => { e.preventDefault(); doFire(); });
-});
+// Accelerometer Controls
+let lastFireTime = 0;
+const tiltThreshold = 1.5;    // m/s^2 - Dead zone for tilt detection
+const tiltSensitivity = 0.02; // Adjust this to control speed scaling from tilt
+const shakeThreshold = 20; // m/s^2, for shake detection sensitivity
+const fireCooldown = 500;  // milliseconds, to prevent rapid firing
+
+function handleDeviceMotion(event) {
+    if (!alive) return;
+
+    const acc = event.accelerationIncludingGravity;
+    let effectiveDx = 0; // Effective change in game X-axis, pixels per event
+    let effectiveDy = 0; // Effective change in game Y-axis, pixels per event
+
+    // Axis mapping assumption for landscape mode:
+    // Device's physical Y-axis (longer side) for game's X-axis (left/right).
+    // Device's physical X-axis (shorter side) for game's Y-axis (forward/backward).
+
+    // Game X-axis movement (Left/Right): Using acc.y
+    // Positive acc.y (device's right side tilted down) moves player right (increase game X).
+    if (acc.y !== null && Math.abs(acc.y) > tiltThreshold) {
+        effectiveDx = (acc.y - Math.sign(acc.y) * tiltThreshold) * tiltSensitivity * mySpeed;
+    }
+
+    // Game Y-axis movement (Forward/Backward): Using acc.x
+    // Positive acc.x (device's top edge tilted down/forward) moves player "up" on screen (decrease game Y).
+    if (acc.x !== null && Math.abs(acc.x) > tiltThreshold) {
+        effectiveDy = -(acc.x - Math.sign(acc.x) * tiltThreshold) * tiltSensitivity * mySpeed;
+    }
+
+    if (effectiveDx !== 0 || effectiveDy !== 0) {
+        myPosition.x += effectiveDx;
+        myPosition.y += effectiveDy;
+
+        // Boundary checks using gameArea dimensions
+        myPosition.x = Math.max(mySize / 2, Math.min(myPosition.x, gameArea.clientWidth - mySize / 2));
+        myPosition.y = Math.max(mySize / 2, Math.min(myPosition.y, gameArea.clientHeight - mySize / 2));
+
+        renderMe();
+        socket.send(JSON.stringify({ type: 'move', position: myPosition }));
+
+        // Particle effect for visual feedback
+        const particleColor = myBlob.style.background || 'grey';
+        const moveMagnitude = Math.sqrt(effectiveDx*effectiveDx + effectiveDy*effectiveDy);
+
+        if (moveMagnitude > 0.1) { // Spawn if moving noticeably
+            spawnParticles(2, myPosition.x, myPosition.y, particleColor, {
+                direction: { x: -effectiveDx, y: -effectiveDy },
+                baseSpeed: 1.0,
+                spread: Math.PI / 9,
+                drag: 0.88,
+                size: 5,
+                lifetime: 250
+            });
+        }
+    }
+
+    // Shake detection for firing
+    const accNoGravity = event.acceleration; // Attempt to use acceleration excluding gravity
+
+    if (accNoGravity && (accNoGravity.x !== null || accNoGravity.y !== null || accNoGravity.z !== null)) {
+        const magnitude = Math.sqrt(
+            Math.pow(accNoGravity.x || 0, 2) +
+            Math.pow(accNoGravity.y || 0, 2) +
+            Math.pow(accNoGravity.z || 0, 2)
+        );
+
+        const currentTime = performance.now(); // Use a consistent name for current time
+        if (magnitude > shakeThreshold && (currentTime - lastFireTime) > fireCooldown) {
+            if (alive) { // Ensure player is alive before firing
+                doFire();
+                lastFireTime = currentTime;
+            }
+        }
+    }
+}
+
+// Register the event listener for device motion
+if (window.DeviceMotionEvent) {
+    window.addEventListener('devicemotion', handleDeviceMotion, true);
+} else {
+    console.log("DeviceMotionEvent is not supported on this device/browser.");
+    // Consider adding a user-facing message if this feature is critical.
+    // const motionStatusElement = document.getElementById('motionStatus');
+    // if (motionStatusElement) motionStatusElement.textContent = "Accelerometer controls not supported.";
+}
 
 // desktop fallback
 document.addEventListener('keydown', e => {
