@@ -52,7 +52,7 @@ html, body {
   border-radius: 0; /* Changed from 50% to make particles square */
   background-color: #ccc; /* A default, will be overridden */
   pointer-events: none;
-  //filter:blur(10px) contrast(10);
+  /*filter:blur(10px) contrast(10);
 }
 
 #controls {
