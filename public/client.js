@@ -97,11 +97,11 @@ socket.addEventListener('message', ev => {
 
       // Updated parameters for "pixel" look death explosion
       spawnParticles(15, explosionX, explosionY, explosionColor, {
-        baseSpeed: 2.5,
-        // spread: Math.PI * 2, // Default for spawnParticles if no direction
+        baseSpeed: 5.5,
+        spread: Math.PI * 2,
         drag: 0.96,
-        size: 20, // Larger size for pixel effect
-        lifetime: 700
+        size: 10,
+        lifetime: 7000
       });
     }
 
@@ -330,13 +330,13 @@ function doMove() {
   // Spawn movement particles - Updated for "pixel" look
   //const particleColor = myBlob.style.background || 'grey'; // Fallback color
   //spawnParticles(3, myPosition.x, myPosition.y, particleColor, { 
-  //  direction: { x: -moveDir.x, y: -moveDir.y },
-  //  baseSpeed: 2.5,
-  //  spread: Math.PI / 7,
-  //  drag: 1,
-  //  size: 30,
-  //  lifetime: 2000
-  //});
+ //   direction: { x: -moveDir.x, y: -moveDir.y },
+ //   baseSpeed: 2.5,
+ //   spread: Math.PI / 7,
+ //   drag: 1,
+ //   size: 30,
+ //   lifetime: 2000
+ // });
 }
 
 function doFire() {
