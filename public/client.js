@@ -2,42 +2,6 @@
 const socket   = new WebSocket(`wss://${location.host}`);
 const gameArea = document.getElementById('gameArea');
 
-// 1. Socket setup
-const socket   = new WebSocket(`wss://${location.host}`);
-const gameArea = document.getElementById('gameArea');
-
-const MAX_SHIELD_THICKNESS_PX = 10; // Maximum thickness for the shield ring
-
-// Function to update player shield visual
-function updateShield(playerElement, shieldStrength, playerColor) {
-  if (!playerElement) return;
-
-  let shieldEl = playerElement.shieldElement;
-  if (!shieldEl) {
-    shieldEl = document.createElement('div');
-    shieldEl.className = 'shield-ring';
-    playerElement.appendChild(shieldEl);
-    playerElement.shieldElement = shieldEl; // Store it for future updates
-  }
-
-  if (shieldStrength > 0) {
-    shieldEl.style.display = 'block';
-    const thickness = (shieldStrength / 100) * MAX_SHIELD_THICKNESS_PX;
-    shieldEl.style.borderWidth = `${thickness}px`;
-    shieldEl.style.borderColor = playerColor;
-    // Ensure the shield ring is circular and centered
-    shieldEl.style.position = 'absolute';
-    shieldEl.style.width = '100%'; // Match parent blob's width
-    shieldEl.style.height = '100%'; // Match parent blob's height
-    shieldEl.style.top = `-${thickness}px`; // Offset by border thickness
-    shieldEl.style.left = `-${thickness}px`; // Offset by border thickness
-    shieldEl.style.borderRadius = '50%';
-    shieldEl.style.boxSizing = 'border-box';
-  } else {
-    shieldEl.style.display = 'none';
-  }
-}
-
 // 2. Tell server our container size
 socket.addEventListener('open', () => {
   socket.send(JSON.stringify({
@@ -133,11 +97,11 @@ socket.addEventListener('message', ev => {
 
       // Updated parameters for "pixel" look death explosion
       spawnParticles(15, explosionX, explosionY, explosionColor, {
-        baseSpeed: 2.5,
-        // spread: Math.PI * 2, // Default for spawnParticles if no direction
+        baseSpeed: 5.5,
+        spread: Math.PI * 2,
         drag: 0.96,
-        size: 20, // Larger size for pixel effect
-        lifetime: 700
+        size: 10,
+        lifetime: 7000
       });
     }
 
@@ -172,15 +136,20 @@ socket.addEventListener('message', ev => {
     el.style.left   = `${info.position.x - info.size/2}px`;
     el.style.top    = `${info.position.y - info.size/2}px`;
 
+    // Shield rendering
+    el.style.boxSizing = 'border-box'; // Ensure border doesn't increase size
+    if (info.shieldHealth && info.shieldHealth > 0) {
+      el.style.border = `${info.shieldHealth * 1}px solid ${info.colour}`;
+    } else {
+      el.style.border = 'none';
+    }
+
     if (!el.scoreElement) {
       el.scoreElement = document.createElement('div');
       el.scoreElement.className = 'score-display';
       el.appendChild(el.scoreElement);
     }
     el.scoreElement.textContent = info.score;
-
-    // Update shield for the player
-    updateShield(el, info.shield, info.colour);
 
     if (isMe) {
       // Update local player's 'alive' state based on server info
@@ -192,13 +161,11 @@ socket.addEventListener('message', ev => {
         myPosition = info.position; 
         mySpeed    = info.speed;
         mySize     = info.size;
-        // myBlob already has its shield updated by the generic 'el' logic above
         renderMe(); // Render once with initial server state
       } else {
         myPosition = info.position;
         mySpeed    = info.speed;
         mySize     = info.size;
-        // myBlob already has its shield updated by the generic 'el' logic above
         renderMe();
       }
     }
@@ -369,15 +336,15 @@ function doMove() {
   socket.send(JSON.stringify({ type: 'move', position: myPosition }));
 
   // Spawn movement particles - Updated for "pixel" look
-  const particleColor = myBlob.style.background || 'grey'; // Fallback color
-  spawnParticles(3, myPosition.x, myPosition.y, particleColor, { 
-    direction: { x: -moveDir.x, y: -moveDir.y },
-    baseSpeed: 2.5,
-    spread: Math.PI / 7,
-    drag: 1,
-    size: 30,
-    lifetime: 2000
-  });
+  //const particleColor = myBlob.style.background || 'grey'; // Fallback color
+  //spawnParticles(3, myPosition.x, myPosition.y, particleColor, { 
+ //   direction: { x: -moveDir.x, y: -moveDir.y },
+ //   baseSpeed: 2.5,
+ //   spread: Math.PI / 7,
+ //   drag: 1,
+ //   size: 30,
+ //   lifetime: 2000
+ // });
 }
 
 function doFire() {

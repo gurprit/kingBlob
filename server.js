@@ -77,7 +77,7 @@ function broadcastState() {
       alive:    p.alive,
       colour:   p.colour,
       score:    p.score, // <<< ADD THIS
-      shield:   p.shield // Add shield to broadcast
+      shieldHealth: p.shieldHealth
     };
   }
 
@@ -134,7 +134,7 @@ function killAndRespawn(pid) {
     p.position = randomSpawn();
     p.size     = INITIAL_SIZE;
     p.speed    = INITIAL_SPEED;
-    p.shield   = 100; // Reset shield to 100
+    p.shieldHealth = 3; // Reset shield health on respawn
     broadcastState();
   }, RESPAWN_DELAY_MS);
 }
@@ -171,7 +171,7 @@ wss.on('connection', ws => {
         alive:    true,
         colour,
         score:    0, // <<< ADD THIS
-        shield:   100 // Initialize shield to 100
+        shieldHealth: 3
       });
 
       ws.send(JSON.stringify({ type: 'init', id: pid }));
@@ -262,15 +262,14 @@ setInterval(() => {
       const dist = Math.hypot(dx, dy);
 
       if (dist < p.size / 2) {
-        // Shield logic
-        if (p.shield > 0) {
-          p.shield -= 25; // Decrease shield by 25
-          if (p.shield < 0) p.shield = 0; // Ensure shield doesn't go below 0
+        const shooter = players.get(b.shooterId);
+        if (shooter && b.shooterId !== pid) { // Ensure shooter exists and is not the victim
+            shooter.score += 1; // <<< ADD THIS
+        }
+
+        if (p.shieldHealth > 0) {
+          p.shieldHealth -= 1;
         } else {
-          const shooter = players.get(b.shooterId);
-          if (shooter && b.shooterId !== pid) { // Ensure shooter exists and is not the victim
-              shooter.score += 1; // <<< ADD THIS
-          }
           killAndRespawn(pid);
         }
         bullets.splice(i, 1);
