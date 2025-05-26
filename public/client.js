@@ -137,12 +137,12 @@ socket.addEventListener('message', ev => {
     el.style.top    = `${info.position.y - info.size/2}px`;
 
     // Shield rendering
-    el.style.boxSizing = 'border-box'; // Ensure border doesn't increase size
     if (info.shieldHealth && info.shieldHealth > 0) {
       el.style.border = `${info.shieldHealth * 1}px solid ${info.colour}`;
     } else {
       el.style.border = 'none';
     }
+    console.log(`Player ID: ${id}, Shield Health: ${info.shieldHealth}, Applied Border: ${el.style.border}, Computed Border: ${window.getComputedStyle(el).border}`);
 
     if (!el.scoreElement) {
       el.scoreElement = document.createElement('div');
